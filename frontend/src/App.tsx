@@ -1,28 +1,61 @@
 import React from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from '@/contexts/AuthContext'
+import Layout from '@/components/layout/Layout'
+import Dashboard from '@/components/dashboard/Dashboard'
+import People from '@/components/people/People'
+import Recognition from '@/components/recognition/Recognition'
+import Analytics from '@/components/analytics/Analytics'
+import Settings from '@/components/settings/Settings'
+import Login from '@/components/auth/Login'
+import { Toaster } from 'react-hot-toast'
 
 function App() {
-  console.log('App renderizando...')
-  
   return (
-    <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
-        <div className="text-center">
-          <div className="text-6xl mb-4"></div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Face Recognition Pro
-          </h1>
-          <p className="text-gray-600 mb-4">
-            Sistema funcionando perfeitamente!
-          </p>
-          <div className="bg-green-100 border border-green-200 rounded-lg p-3">
-            <p className="text-green-800 font-medium"> Frontend Online</p>
-          </div>
-          <div className="bg-blue-100 border border-blue-200 rounded-lg p-3 mt-3">
-            <p className="text-blue-800 font-medium"> Tailwind CSS Ativo</p>
-          </div>
+    <AuthProvider>
+      <Router>
+        <div className="min-h-screen bg-gray-50">
+          <Routes>
+            {/* Rota de Login */}
+            <Route path="/login" element={<Login />} />
+            
+            {/* Rotas protegidas com Layout */}
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="people" element={<People />} />
+              <Route path="recognition" element={<Recognition />} />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+          </Routes>
+          
+          {/* Toast notifications */}
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#363636',
+                color: '#fff',
+              },
+              success: {
+                iconTheme: {
+                  primary: '#10b981',
+                  secondary: '#fff',
+                },
+              },
+              error: {
+                iconTheme: {
+                  primary: '#ef4444',
+                  secondary: '#fff',
+                },
+              },
+            }}
+          />
         </div>
-      </div>
-    </div>
+      </Router>
+    </AuthProvider>
   )
 }
 
