@@ -5,37 +5,44 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    volumes:
-      - ./backend:/app
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
-      - CLOUDINARY_URL=${CLOUDINARY_URL}
-    depends_on:
-      - db
-
-  db:
-    image: supabase/postgres
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_DB=${POSTGRES_DB}
+      - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=8000
+    env_file:
+      - ./backend/.env
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    depends_on:
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/app
     ports:
       - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend
 
 volumes:
-  db_data:
+  uploads:
+  node_modules:
