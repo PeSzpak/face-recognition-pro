@@ -1,10 +1,21 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
+import App from './App'
 import './styles/globals.css'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+console.log(' Main.tsx carregando...')
+
+const rootElement = document.getElementById('root')
+console.log(' Root element encontrado:', rootElement)
+
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement)
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  )
+  console.log(' App renderizado com sucesso!')
+} else {
+  console.error(' Elemento root não encontrado!')
+}
