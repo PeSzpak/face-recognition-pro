@@ -1,11 +1,50 @@
+from pydantic_settings import BaseSettings
+from typing import List
 import os
 
-class Config:
-    DATABASE_URL = os.getenv("DATABASE_URL", "your_default_database_url")
-    SUPABASE_URL = os.getenv("SUPABASE_URL", "your_default_supabase_url")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "your_default_supabase_key")
-    JWT_SECRET = os.getenv("JWT_SECRET", "your_default_jwt_secret")
-    JWT_EXPIRATION = os.getenv("JWT_EXPIRATION", "1h")
-    IMAGE_UPLOAD_PATH = os.getenv("IMAGE_UPLOAD_PATH", "./uploads")
-    PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "your_default_pinecone_api_key")
-    PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT", "us-west1-gcp")
+
+class Settings(BaseSettings):
+    # Database
+    supabase_url: str
+    supabase_key: str
+    supabase_service_key: str
+    
+    # Vector Database
+    pinecone_api_key: str
+    pinecone_environment: str
+    pinecone_index_name: str = "face-recognition-embeddings"
+    
+    # Security
+    secret_key: str
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    
+    # Face Recognition
+    face_recognition_model: str = "Facenet512"
+    face_detection_backend: str = "opencv"
+    similarity_threshold: float = 0.6
+    
+    # Upload
+    max_file_size: int = 10485760  # 10MB
+    allowed_extensions: List[str] = ["jpg", "jpeg", "png"]
+    upload_path: str = "./uploads"
+    
+    # API
+    debug: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8000
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+
+# Create uploads directory if it doesn't exist
+def create_upload_dir():
+    upload_path = "./uploads"
+    if not os.path.exists(upload_path):
+        os.makedirs(upload_path)
+
+
+settings = Settings()
+create_upload_dir()

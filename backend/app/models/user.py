@@ -1,14 +1,49 @@
-from sqlalchemy import Column, Integer, String
-from backend.app.core.database import Base
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
 
-class User(Base):
-    __tablename__ = 'users'
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    is_active = Column(Integer, default=1)  # 1 for active, 0 for inactive
+class UserBase(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: Optional[str] = None
+    is_active: bool = True
 
-    def __repr__(self):
-        return f"<User(id={self.id}, username={self.username}, email={self.email}, is_active={self.is_active})>"
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserUpdate(UserBase):
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class UserInDB(UserBase):
+    id: str
+    hashed_password: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class User(UserBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Optional[str] = None

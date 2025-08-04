@@ -1,18 +1,32 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 
-class PersonCreate(BaseModel):
+
+class PersonResponse(BaseModel):
+    id: str
     name: str
-    photos: List[str]  # URLs or paths to the uploaded photos
+    description: Optional[str]
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+    photo_count: int
 
-class PersonUpdate(BaseModel):
+
+class PersonCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class PersonUpdateRequest(BaseModel):
     name: Optional[str] = None
-    photos: Optional[List[str]] = None
+    description: Optional[str] = None
+    active: Optional[bool] = None
 
-class Person(BaseModel):
-    id: int
-    name: str
-    photos: List[str]
 
-    class Config:
-        orm_mode = True
+class PersonListResponse(BaseModel):
+    persons: List[PersonResponse]
+    total: int
+    page: int
+    size: int
+    has_next: bool
