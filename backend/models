@@ -1,0 +1,41 @@
+# File: /face-recognition-pro/backend/app/models/__init__.py
+# This file is intentionally left blank.
+
+# File: /face-recognition-pro/backend/app/models/person.py
+from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy.orm import relationship
+from backend.app.core.database import Base
+
+class Person(Base):
+    __tablename__ = 'persons'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    photos = Column(Text)  # Store paths or URLs to photos
+    recognition_logs = relationship("RecognitionLog", back_populates="person")
+
+# File: /face-recognition-pro/backend/app/models/recognition_log.py
+from sqlalchemy import Column, Integer, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from backend.app.core.database import Base
+
+class RecognitionLog(Base):
+    __tablename__ = 'recognition_logs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    person_id = Column(Integer, ForeignKey('persons.id'))
+    timestamp = Column(DateTime)
+    confidence = Column(Integer)  # Confidence level of recognition
+    person = relationship("Person", back_populates="recognition_logs")
+
+# File: /face-recognition-pro/backend/app/models/user.py
+from sqlalchemy import Column, Integer, String
+from backend.app.core.database import Base
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)  # Store hashed password
+    email = Column(String, unique=True, index=True)  # Optional field for user management
