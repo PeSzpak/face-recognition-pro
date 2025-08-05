@@ -90,7 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-gray-900">FaceRecognition</h1>
-              <p className="text-xs text-gray-500">Pro v1.0</p>
+              <p className="text-xs text-gray-500">Pro v1.1</p>
             </div>
           </div>
           <button
