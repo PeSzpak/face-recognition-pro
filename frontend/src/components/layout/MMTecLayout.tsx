@@ -1,101 +1,94 @@
-import React, { useState } from "react";
-import {
-  Shield,
-  Users,
-  BarChart3,
-  Settings,
-  LogOut,
-  Menu,
+import React, { useState } from 'react'
+import { 
+  Shield, 
+  Users, 
+  BarChart3, 
+  Settings, 
+  LogOut, 
+  Menu, 
   X,
   Search,
   Bell,
-  User,
-} from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
+  User
+} from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 
 interface MMTecLayoutProps {
-  children: React.ReactNode;
-  currentPage?: string;
+  children: React.ReactNode
+  currentPage?: string
 }
 
-const MMTecLayout: React.FC<MMTecLayoutProps> = ({
-  children,
-  currentPage = "dashboard",
-}) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const navigate = useNavigate();
+const MMTecLayout: React.FC<MMTecLayoutProps> = ({ children, currentPage = 'dashboard' }) => {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const navigate = useNavigate()
 
   const navigation = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: BarChart3,
-      current: currentPage === "dashboard",
-      description: "Visão geral do sistema",
+    { 
+      name: 'Dashboard', 
+      href: '/dashboard', 
+      icon: BarChart3, 
+      current: currentPage === 'dashboard',
+      description: 'Visão geral do sistema'
     },
-    {
-      name: "Reconhecimento",
-      href: "/recognition",
-      icon: Shield,
-      current: currentPage === "recognition",
-      description: "Face ID e identificação",
+    { 
+      name: 'Reconhecimento', 
+      href: '/recognition', 
+      icon: Shield, 
+      current: currentPage === 'recognition',
+      description: 'Face ID e identificação'
     },
-    {
-      name: "Pessoas",
-      href: "/people",
-      icon: Users,
-      current: currentPage === "people",
-      description: "Gerenciar usuários",
+    { 
+      name: 'Pessoas', 
+      href: '/people', 
+      icon: Users, 
+      current: currentPage === 'people',
+      description: 'Gerenciar usuários'
     },
-    {
-      name: "Relatórios",
-      href: "/analytics",
-      icon: BarChart3,
-      current: currentPage === "analytics",
-      description: "Análises e métricas",
+    { 
+      name: 'Relatórios', 
+      href: '/analytics', 
+      icon: BarChart3, 
+      current: currentPage === 'analytics',
+      description: 'Análises e métricas'
     },
-    {
-      name: "Configurações",
-      href: "/settings",
-      icon: Settings,
-      current: currentPage === "settings",
-      description: "Configurações do sistema",
-    },
-  ];
+    { 
+      name: 'Configurações', 
+      href: '/settings', 
+      icon: Settings, 
+      current: currentPage === 'settings',
+      description: 'Configurações do sistema'
+    }
+  ]
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    toast.success("Logout realizado com sucesso!");
-    navigate("/login");
-  };
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    toast.success('Logout realizado com sucesso!')
+    navigate('/login')
+  }
 
   const handleNavigation = (href: string) => {
-    navigate(href);
-    setSidebarOpen(false);
-  };
+    navigate(href)
+    setSidebarOpen(false)
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 lg:hidden"
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
-        >
-          <div className="fixed inset-0 bg-black bg-opacity-25" />
-        </div>
+        />
       )}
 
       {/* Sidebar */}
-      <div
-        className={`
-        fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-      `}
-      >
-        <div className="flex flex-col h-full bg-mmtec-gradient">
+      <div className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-mmtec-gradient transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-6 border-b border-blue-600">
             <div className="flex items-center">
@@ -116,46 +109,35 @@ const MMTecLayout: React.FC<MMTecLayoutProps> = ({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-2">
+          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
             {navigation.map((item) => {
-              const Icon = item.icon;
+              const Icon = item.icon
               return (
                 <button
                   key={item.name}
                   onClick={() => handleNavigation(item.href)}
                   className={`
                     w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 group
-                    ${
-                      item.current
-                        ? "bg-white text-mmtec-primary shadow-lg"
-                        : "text-blue-100 hover:bg-blue-600 hover:text-white"
+                    ${item.current 
+                      ? 'bg-white text-mmtec-primary shadow-lg' 
+                      : 'text-blue-100 hover:bg-blue-600 hover:text-white'
                     }
                   `}
                 >
-                  <Icon
-                    className={`
+                  <Icon className={`
                     mr-3 h-5 w-5 flex-shrink-0
-                    ${
-                      item.current
-                        ? "text-mmtec-primary"
-                        : "text-blue-200 group-hover:text-white"
-                    }
-                  `}
-                  />
+                    ${item.current ? 'text-mmtec-primary' : 'text-blue-200 group-hover:text-white'}
+                  `} />
                   <div className="text-left">
                     <div className="font-medium">{item.name}</div>
-                    <div
-                      className={`text-xs ${
-                        item.current
-                          ? "text-slate-500"
-                          : "text-blue-200 group-hover:text-blue-100"
-                      }`}
-                    >
+                    <div className={`text-xs ${
+                      item.current ? 'text-slate-500' : 'text-blue-200 group-hover:text-blue-100'
+                    }`}>
                       {item.description}
                     </div>
                   </div>
                 </button>
-              );
+              )
             })}
           </nav>
 
@@ -182,9 +164,9 @@ const MMTecLayout: React.FC<MMTecLayoutProps> = ({
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-40 bg-white shadow-sm border-b border-slate-200">
+        <div className="sticky top-0 z-30 bg-white shadow-sm border-b border-slate-200">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
             <div className="flex items-center">
               <button
@@ -193,18 +175,13 @@ const MMTecLayout: React.FC<MMTecLayoutProps> = ({
               >
                 <Menu className="h-6 w-6" />
               </button>
-
+              
               <div className="ml-4 lg:ml-0">
                 <h1 className="text-xl font-semibold text-slate-900 capitalize">
-                  {currentPage === "recognition"
-                    ? "Reconhecimento Facial"
-                    : currentPage === "people"
-                    ? "Gerenciar Pessoas"
-                    : currentPage === "analytics"
-                    ? "Relatórios e Análises"
-                    : currentPage === "settings"
-                    ? "Configurações"
-                    : "Dashboard"}
+                  {currentPage === 'recognition' ? 'Reconhecimento Facial' : 
+                   currentPage === 'people' ? 'Gerenciar Pessoas' :
+                   currentPage === 'analytics' ? 'Relatórios e Análises' :
+                   currentPage === 'settings' ? 'Configurações' : 'Dashboard'}
                 </h1>
               </div>
             </div>
@@ -230,21 +207,21 @@ const MMTecLayout: React.FC<MMTecLayoutProps> = ({
               {/* Status indicator */}
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="hidden sm:block text-xs font-medium text-slate-600">
-                  Sistema Online
-                </span>
+                <span className="hidden sm:block text-xs font-medium text-slate-600">Sistema Online</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Page content */}
-        <main className="p-4 sm:p-6 lg:p-8">
-          <div className="mmtec-container">{children}</div>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto">
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
         </main>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default MMTecLayout;
+export default MMTecLayout

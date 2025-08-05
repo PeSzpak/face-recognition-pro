@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Upload, Camera, X, Image as ImageIcon, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
-import SimpleWebcam from '../SimpleWebcam'
+import SimpleWebcam from './SimpleWebcam'
 import LiveDetection from '../LiveDetection'
 
 interface ImageUploadProps {
@@ -179,10 +179,6 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
         <div className="animate-fadeIn">
           <SimpleWebcam
             onCapture={handleSimpleCapture}
-            onClose={() => {
-              console.log('📸 Fechando webcam simples')
-              setActiveMode('none')
-            }}
           />
         </div>
       )}
