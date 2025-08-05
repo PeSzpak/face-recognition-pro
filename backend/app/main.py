@@ -1,128 +1,87 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from .config import settings
 import logging
-from app.config import settings
-from app.api import auth, persons, recognition, dashboard
-from app.core.exceptions import (
-    FaceRecognitionException,
-    PersonNotFoundException,
-    InvalidImageException,
-    NoFaceDetectedException,
-    MultipleFacesException,
-    VectorDatabaseException,
-    AuthenticationException
-)
+import os
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
-# Create FastAPI app
 app = FastAPI(
-    title="Face Recognition Pro",
-    description="Professional Face Recognition System with AI-powered identification",
+    title="Face Recognition Pro API",
+    description="Sistema avançado de reconhecimento facial com Pinecone e Supabase",
     version="1.0.0",
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None
+    debug=settings.DEBUG
 )
 
-# CORS middleware
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly for production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Exception handlers
-@app.exception_handler(FaceRecognitionException)
-async def face_recognition_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "face_recognition_error"}
-    )
+# Garantir diretório uploads
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
-@app.exception_handler(PersonNotFoundException)
-async def person_not_found_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "person_not_found"}
-    )
+# Static files para uploads
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
-@app.exception_handler(InvalidImageException)
-async def invalid_image_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "invalid_image"}
-    )
+# Incluir routers
+try:
+    from .api import system, auth, persons, recognition, dashboard
+    app.include_router(system.router)
+    app.include_router(auth.router)
+    app.include_router(persons.router)
+    app.include_router(recognition.router)
+    app.include_router(dashboard.router)
+except ImportError as e:
+    logging.warning(f"Alguns routers não puderam ser importados: {e}")
+    # Importar apenas os disponíveis
+    try:
+        from .api import system
+        app.include_router(system.router)
+    except ImportError:
+        pass
 
-@app.exception_handler(NoFaceDetectedException)
-async def no_face_detected_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "no_face_detected"}
-    )
-
-@app.exception_handler(MultipleFacesException)
-async def multiple_faces_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "multiple_faces"}
-    )
-
-@app.exception_handler(VectorDatabaseException)
-async def vector_database_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "vector_database_error"}
-    )
-
-@app.exception_handler(AuthenticationException)
-async def authentication_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "type": "authentication_error"},
-        headers=exc.headers
-    )
-
-# Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
-app.include_router(persons.router, prefix="/api/persons", tags=["persons"])
-app.include_router(recognition.router, prefix="/api/recognition", tags=["recognition"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
-
-# Health check
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "Face Recognition Pro",
-        "version": "1.0.0"
-    }
-
-# Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint with API information."""
     return {
         "message": "Face Recognition Pro API",
         "version": "1.0.0",
-        "docs": "/docs" if settings.debug else "disabled",
-        "health": "/health"
+        "status": "running",
+        "pinecone_configured": bool(settings.PINECONE_API_KEY),
+        "supabase_configured": bool(hasattr(settings, 'SUPABASE_KEY')),
+        "docs": "/docs",
+        "health": "/api/system/health"
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-        log_level="info"
-    )
+@app.on_event("startup")
+async def startup_event():
+    """Executar na inicialização"""
+    logging.info("🚀 Iniciando Face Recognition Pro API...")
+    logging.info(f"📍 Pinecone Environment: {settings.PINECONE_ENVIRONMENT}")
+    logging.info(f"📁 Upload Directory: {settings.UPLOAD_DIR}")
+    logging.info(f"🐛 Debug Mode: {settings.DEBUG}")
+    logging.info(f"🔑 Pinecone API Key: {'✅ Configurada' if settings.PINECONE_API_KEY else '❌ Não configurada'}")
+    
+    try:
+        logging.info(f"🗄️ Supabase: {'✅ Configurado' if settings.SUPABASE_KEY else '❌ Não configurado'}")
+    except:
+        logging.info("🗄️ Supabase: ❌ Não configurado")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Executar no encerramento"""
+    logging.info("🛑 Encerrando Face Recognition Pro API...")

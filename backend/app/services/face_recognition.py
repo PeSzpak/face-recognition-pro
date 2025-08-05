@@ -14,17 +14,20 @@ from app.core.exceptions import (
     NoFaceDetectedException, MultipleFacesException, 
     InvalidImageException, FaceRecognitionException
 )
+from PIL import Image
+import io
+from .vector_database import vector_db
 
 logger = logging.getLogger(__name__)
 
 
 class FaceRecognitionService:
     def __init__(self):
-        self.model_name = settings.face_recognition_model
-        self.detector_backend = settings.face_detection_backend
-        self.similarity_threshold = settings.similarity_threshold
-        self._initialize_models()
-    
+        self.model_name = "Facenet512"  # 512-dimensional embeddings
+        self.detector_backend = "opencv"
+        self.distance_metric = "cosine"
+        self.confidence_threshold = 0.6
+        
     def _initialize_models(self):
         """Initialize and warm up DeepFace models."""
         try:
@@ -267,12 +270,134 @@ class FaceRecognitionService:
             'SFace': 128
         }
         return embedding_sizes.get(self.model_name, 512)
+    
+    async def extract_embedding(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Extrair embedding facial de uma imagem"""
+        try:
+            # Converter bytes para imagem
+            pil_image = Image.open(io.BytesIO(image_data))
+            cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            
+            # Validar qualidade da imagem
+            if not self._validate_image_quality(cv_image):
+                raise InvalidImageException("Imagem com qualidade insuficiente")
+            
+            # Extrair embedding usando DeepFace
+            try:
+                embeddings = DeepFace.represent(
+                    img_path=cv_image,
+                    model_name=self.model_name,
+                    detector_backend=self.detector_backend,
+                    enforce_detection=True
+                )
+                
+                if embeddings and len(embeddings) > 0:
+                    return np.array(embeddings[0]["embedding"])
+                else:
+                    return None
+                    
+            except ValueError as e:
+                if "Face could not be detected" in str(e):
+                    return None
+                raise
+                
+        except Exception as e:
+            logger.error(f"Erro ao extrair embedding: {str(e)}")
+            raise
+    
+    async def recognize_face(self, image_data: bytes, vector_service) -> Dict:
+        """Reconhecer face em uma imagem"""
+        try:
+            # Extrair embedding
+            embedding = await self.extract_embedding(image_data)
+            
+            if embedding is None:
+                return {
+                    "recognized": False,
+                    "status": "no_face",
+                    "message": "Nenhum rosto detectado na imagem"
+                }
+            
+            # Buscar no banco vetorial
+            matches = vector_service.search_similar(
+                embedding=embedding.tolist(),
+                top_k=1,
+                score_threshold=self.confidence_threshold
+            )
+            
+            if matches and len(matches) > 0:
+                best_match = matches[0]
+                confidence = 1 - best_match['score']  # Converter distance para confidence
+                
+                return {
+                    "recognized": True,
+                    "status": "success",
+                    "person_id": best_match['metadata']['person_id'],
+                    "person_name": best_match['metadata']['person_name'],
+                    "confidence": round(confidence, 3),
+                    "message": f"Pessoa reconhecida: {best_match['metadata']['person_name']}"
+                }
+            else:
+                return {
+                    "recognized": False,
+                    "status": "no_match",
+                    "message": "Pessoa não encontrada no banco de dados"
+                }
+                
+        except Exception as e:
+            logger.error(f"Erro no reconhecimento: {str(e)}")
+            return {
+                "recognized": False,
+                "status": "error",
+                "message": f"Erro interno: {str(e)}"
+            }
+    
+    async def recognize_face_with_pinecone(self, image_data: bytes) -> Dict:
+        """Reconhecer face usando Pinecone"""
+        try:
+            # Extrair embedding
+            embedding = await self.extract_embedding(image_data)
+            
+            if embedding is None:
+                return {
+                    "recognized": False,
+                    "status": "no_face",
+                    "message": "Nenhum rosto detectado na imagem"
+                }
+            
+            # Buscar no Pinecone
+            matches = vector_db.search_similar(
+                embedding=embedding.tolist(),
+                top_k=1,
+                score_threshold=self.confidence_threshold
+            )
+            
+            if matches and len(matches) > 0:
+                best_match = matches[0]
+                confidence = best_match['confidence']
+                
+                return {
+                    "recognized": True,
+                    "status": "success",
+                    "person_id": best_match['metadata']['person_id'],
+                    "person_name": best_match['metadata']['person_name'],
+                    "confidence": round(confidence, 3),
+                    "message": f"Pessoa reconhecida: {best_match['metadata']['person_name']}"
+                }
+            else:
+                return {
+                    "recognized": False,
+                    "status": "no_match",
+                    "message": "Pessoa não encontrada no banco de dados"
+                }
+                
+        except Exception as e:
+            logger.error(f"Erro no reconhecimento com Pinecone: {str(e)}")
+            return {
+                "recognized": False,
+                "status": "error",
+                "message": f"Erro interno: {str(e)}"
+            }
 
-
-# Global face recognition service instance
+# Instância global
 face_recognition_service = FaceRecognitionService()
-
-
-def get_face_recognition_service() -> FaceRecognitionService:
-    """Dependency to get face recognition service."""
-    return face_recognition_service

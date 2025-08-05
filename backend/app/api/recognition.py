@@ -1,10 +1,10 @@
 import time
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
 from fastapi.responses import JSONResponse
 from app.core.database import get_database
 from app.core.security import get_current_user
-from app.services.face_recognition import get_face_recognition_service
+from app.services.face_recognition import get_face_recognition_service, face_recognition_service
 from app.services.vector_database import get_vector_database_service
 from app.schemas.recognition import (
     RecognitionRequest, RecognitionResult, RecognitionLogResponse, 
@@ -229,3 +229,26 @@ async def get_recognition_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve recognition statistics"
         )
+
+
+@router.post("/upload-real")
+async def upload_real_recognition(
+    image: UploadFile = File(...),
+    current_user=Depends(get_current_user)
+):
+    """Reconhecimento real usando Pinecone"""
+    try:
+        # Validar arquivo
+        if not image.content_type.startswith('image/'):
+            raise HTTPException(400, "Arquivo deve ser uma imagem")
+        
+        # Ler dados da imagem
+        image_data = await image.read()
+        
+        # Processar reconhecimento
+        result = await face_recognition_service.recognize_face_with_pinecone(image_data)
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(500, f"Erro no reconhecimento: {str(e)}")

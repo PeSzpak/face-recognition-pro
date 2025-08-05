@@ -1,50 +1,50 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import Optional
 import os
 
-
 class Settings(BaseSettings):
+    # API
+    SECRET_KEY: str = "face-recognition-pro-secret-key-change-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # Supabase
+    SUPABASE_URL: str = "https://qfyjpgctgsmdiyjfviup.supabase.co"
+    SUPABASE_KEY: str 
+    SUPABASE_PASSWORD: str = "-7cSE_bzsJ@Yqzj"
+    
     # Database
-    supabase_url: str
-    supabase_key: str
-    supabase_service_key: str
+    DATABASE_URL: str = "postgresql://postgres:-7cSE_bzsJ@Yqzj@db.qfyjpgctgsmdiyjfviup.supabase.co:5432/postgres"
     
-    # Vector Database
-    pinecone_api_key: str
-    pinecone_environment: str
-    pinecone_index_name: str = "face-recognition-embeddings"
-    
-    # Security
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # Vector Database - Pinecone
+    PINECONE_API_KEY: str = "pcsk_5eva3w_6FfdhdZLaGj218QtXrjsUAiVofh7gJhzPYQtDuGZeKkv8soP9BSXXVuMeSbSawS"
+    PINECONE_ENVIRONMENT: str = "us-east1-gcp"
+    PINECONE_INDEX_NAME: str = "face-embeddings"
     
     # Face Recognition
-    face_recognition_model: str = "Facenet512"
-    face_detection_backend: str = "opencv"
-    similarity_threshold: float = 0.6
+    FACE_RECOGNITION_MODEL: str = "Facenet512"
+    FACE_DETECTION_BACKEND: str = "opencv"
+    CONFIDENCE_THRESHOLD: float = 0.6
     
-    # Upload
-    max_file_size: int = 10485760  # 10MB
-    allowed_extensions: List[str] = ["jpg", "jpeg", "png"]
-    upload_path: str = "./uploads"
+    # File Upload
+    MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
+    UPLOAD_DIR: str = "uploads"
+    ALLOWED_EXTENSIONS: set = {".jpg", ".jpeg", ".png", ".bmp"}
     
-    # API
-    debug: bool = True
-    host: str = "0.0.0.0"
-    port: int = 8000
+    # Development
+    DEBUG: bool = True
     
     class Config:
         env_file = ".env"
-        case_sensitive = False
+        case_sensitive = True
 
-
-# Create uploads directory if it doesn't exist
-def create_upload_dir():
-    upload_path = "./uploads"
-    if not os.path.exists(upload_path):
-        os.makedirs(upload_path)
-
-
+# Instância global das configurações
 settings = Settings()
-create_upload_dir()
+
+# Criar diretório de uploads
+if not os.path.exists(settings.UPLOAD_DIR):
+    try:
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        print(f"✅ Diretório {settings.UPLOAD_DIR} criado")
+    except Exception as e:
+        print(f"⚠️ Aviso: Erro ao criar diretório {settings.UPLOAD_DIR}: {e}")

@@ -4,6 +4,8 @@ import base64
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+
 from app.core.database import get_database
 from app.core.security import get_current_user
 from app.services.face_recognition import get_face_recognition_service
@@ -24,286 +26,246 @@ router = APIRouter()
 
 @router.post("/", response_model=PersonResponse)
 async def create_person(
-    person_data: PersonCreateRequest,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database),
-    face_service=Depends(get_face_recognition_service),
-    vector_db=Depends(get_vector_database_service)
+    name: str = Form(...),
+    email: str = Form(None),
+    department: str = Form(None),
+    position: str = Form(None),
+    phone: str = Form(None),
+    notes: str = Form(None),
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
-    """Create a new person without photos (photos added separately)."""
+    """Cadastrar nova pessoa com múltiplas fotos"""
     try:
-        # Create person record
-        person_dict = {
-            "name": person_data.name,
-            "description": person_data.description,
-            "active": True,
-            "created_by": current_user["sub"]
-        }
+        face_service = get_face_recognition_service()
+        vector_service = get_vector_database_service()
         
-        result = db.table("persons").insert(person_dict).execute()
+        # Validar imagens
+        if len(images) < 1:
+            raise HTTPException(400, "Pelo menos uma imagem é necessária")
         
-        if not result.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create person"
-            )
+        if len(images) > 10:
+            raise HTTPException(400, "Máximo 10 imagens por pessoa")
         
-        created_person = result.data[0]
-        
-        logger.info(f"Person created: {created_person['id']} - {person_data.name}")
-        
-        return PersonResponse(**created_person, photo_count=0)
-        
-    except Exception as e:
-        logger.error(f"Failed to create person: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create person"
-        )
-
-
-@router.post("/{person_id}/photos")
-async def add_person_photos(
-    person_id: str,
-    images: List[str] = Form(..., description="Base64 encoded images"),
-    current_user=Depends(get_current_user),
-    db=Depends(get_database),
-    face_service=Depends(get_face_recognition_service),
-    vector_db=Depends(get_vector_database_service)
-):
-    """Add photos to an existing person and extract embeddings."""
-    try:
-        # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
-            raise PersonNotFoundException(person_id)
-        
-        person = person_result.data[0]
-        
-        # Process each image
+        # Processar cada imagem
         embeddings = []
         processed_images = []
         
-        for i, image_base64 in enumerate(images):
-            try:
-                # Process image for face recognition
-                cv2_image, embeddings_data = face_service.process_image_for_recognition(image_base64)
-                
-                if not embeddings_data:
-                    logger.warning(f"No faces detected in image {i} for person {person_id}")
-                    continue
-                
-                # Take the best quality embedding
-                best_embedding = max(embeddings_data, key=lambda x: x['quality_score'])
-                embeddings.append(best_embedding['embedding'])
-                
-                # Save image info (you might want to save actual images to storage)
-                processed_images.append({
-                    "image_index": i,
-                    "quality_score": best_embedding['quality_score'],
-                    "face_region": best_embedding['region']
-                })
-                
-            except Exception as e:
-                logger.warning(f"Failed to process image {i} for person {person_id}: {e}")
-                continue
+        for image in images:
+            # Validar formato
+            if not image.content_type.startswith('image/'):
+                raise HTTPException(400, f"Arquivo {image.filename} não é uma imagem")
+            
+            # Validar tamanho (5MB)
+            if image.size > 5 * 1024 * 1024:
+                raise HTTPException(400, f"Arquivo {image.filename} muito grande (máx 5MB)")
+            
+            # Extrair embedding
+            image_data = await image.read()
+            embedding = await face_service.extract_embedding(image_data)
+            
+            if embedding is None:
+                raise HTTPException(400, f"Nenhum rosto detectado em {image.filename}")
+            
+            embeddings.append(embedding)
+            processed_images.append({
+                'filename': image.filename,
+                'data': image_data,
+                'size': len(image_data)
+            })
         
-        if not embeddings:
-            raise InvalidImageException("No valid faces found in any of the provided images")
+        # Gerar ID único
+        person_id = str(uuid.uuid4())
         
-        # Store embeddings in vector database
-        metadata = {
-            "person_name": person["name"],
-            "person_id": person_id
+        # Salvar embeddings no Pinecone
+        vector_ids = []
+        for i, embedding in enumerate(embeddings):
+            vector_id = f"{person_id}_{i}"
+            vector_service.upsert_vector(
+                vector_id=vector_id,
+                embedding=embedding.tolist(),
+                metadata={
+                    'person_id': person_id,
+                    'person_name': name,
+                    'image_index': i,
+                    'department': department,
+                    'position': position
+                }
+            )
+            vector_ids.append(vector_id)
+        
+        # Dados da pessoa para retorno
+        person_data = {
+            'id': person_id,
+            'name': name,
+            'email': email,
+            'department': department,
+            'position': position,
+            'phone': phone,
+            'notes': notes,
+            'photos': [f"/uploads/{person_id}_{i}.jpg" for i in range(len(images))],
+            'status': 'active',
+            'created_at': datetime.utcnow().isoformat(),
+            'recognition_count': 0,
+            'photo_count': len(images)
         }
         
-        vector_db.upsert_person_embeddings(person_id, embeddings, metadata)
+        # TODO: Salvar no banco de dados relacional
         
-        # Update person photo count
-        photo_count = len(embeddings)
-        db.table("persons").update({"photo_count": photo_count}).eq("id", person_id).execute()
+        return PersonResponse(**person_data)
         
-        logger.info(f"Added {photo_count} photos to person {person_id}")
-        
-        return JSONResponse(
-            content={
-                "message": f"Successfully added {photo_count} photos",
-                "person_id": person_id,
-                "photos_processed": len(processed_images),
-                "embeddings_created": len(embeddings)
-            }
-        )
-        
-    except (PersonNotFoundException, InvalidImageException):
-        raise
     except Exception as e:
-        logger.error(f"Failed to add photos to person {person_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process photos"
-        )
+        raise HTTPException(500, f"Erro ao cadastrar pessoa: {str(e)}")
 
-
-@router.get("/", response_model=PersonListResponse)
+@router.get("/", response_model=List[PersonResponse])
 async def list_persons(
-    page: int = 1,
-    size: int = 20,
-    search: Optional[str] = None,
-    active_only: bool = True,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database)
+    skip: int = 0,
+    limit: int = 100,
+    search: str = None,
+    department: str = None,
+    status: str = None,
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
-    """List persons with pagination and search."""
-    try:
-        # Build query
-        query = db.table("persons").select("*")
-        
-        if active_only:
-            query = query.eq("active", True)
-        
-        if search:
-            query = query.ilike("name", f"%{search}%")
-        
-        # Get total count
-        count_result = query.execute()
-        total = len(count_result.data) if count_result.data else 0
-        
-        # Apply pagination
-        offset = (page - 1) * size
-        result = query.order("created_at", desc=True).range(offset, offset + size - 1).execute()
-        
-        persons = []
-        if result.data:
-            for person_data in result.data:
-                persons.append(PersonResponse(**person_data))
-        
-        has_next = offset + size < total
-        
-        return PersonListResponse(
-            persons=persons,
-            total=total,
-            page=page,
-            size=size,
-            has_next=has_next
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to list persons: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve persons"
-        )
-
+    """Listar pessoas cadastradas com filtros"""
+    # Mock data para desenvolvimento
+    mock_persons = [
+        {
+            'id': '1',
+            'name': 'João Silva Santos',
+            'email': 'joao@empresa.com',
+            'department': 'Desenvolvimento',
+            'position': 'Desenvolvedor Sênior',
+            'phone': '(11) 99999-9999',
+            'photos': ['/api/placeholder/400/400', '/api/placeholder/400/401'],
+            'status': 'active',
+            'created_at': '2024-01-15T10:00:00Z',
+            'last_recognition': '2024-08-05T14:30:00Z',
+            'recognition_count': 45,
+            'notes': 'Funcionário experiente'
+        },
+        {
+            'id': '2',
+            'name': 'Maria Santos Costa',
+            'email': 'maria@empresa.com',
+            'department': 'Marketing',
+            'position': 'Gerente de Marketing',
+            'phone': '(11) 88888-8888',
+            'photos': ['/api/placeholder/400/402'],
+            'status': 'active',
+            'created_at': '2024-02-20T09:15:00Z',
+            'last_recognition': '2024-08-05T11:20:00Z',
+            'recognition_count': 32,
+            'notes': ''
+        }
+    ]
+    
+    # Aplicar filtros
+    filtered_persons = mock_persons
+    
+    if search:
+        filtered_persons = [p for p in filtered_persons 
+                          if search.lower() in p['name'].lower() 
+                          or search.lower() in (p['email'] or '').lower()]
+    
+    if department:
+        filtered_persons = [p for p in filtered_persons 
+                          if p['department'] == department]
+    
+    if status:
+        filtered_persons = [p for p in filtered_persons 
+                          if p['status'] == status]
+    
+    # Paginação
+    start = skip
+    end = skip + limit
+    return filtered_persons[start:end]
 
 @router.get("/{person_id}", response_model=PersonResponse)
 async def get_person(
     person_id: str,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database)
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
-    """Get person by ID."""
-    try:
-        result = db.table("persons").select("*").eq("id", person_id).execute()
-        
-        if not result.data:
-            raise PersonNotFoundException(person_id)
-        
-        person = result.data[0]
-        return PersonResponse(**person)
-        
-    except PersonNotFoundException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get person {person_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve person"
-        )
-
+    """Obter detalhes de uma pessoa"""
+    # Mock data
+    if person_id == "1":
+        return {
+            'id': '1',
+            'name': 'João Silva Santos',
+            'email': 'joao@empresa.com',
+            'department': 'Desenvolvimento',
+            'position': 'Desenvolvedor Sênior',
+            'phone': '(11) 99999-9999',
+            'photos': ['/api/placeholder/400/400', '/api/placeholder/400/401'],
+            'status': 'active',
+            'created_at': '2024-01-15T10:00:00Z',
+            'last_recognition': '2024-08-05T14:30:00Z',
+            'recognition_count': 45,
+            'notes': 'Funcionário experiente'
+        }
+    
+    raise HTTPException(404, "Pessoa não encontrada")
 
 @router.put("/{person_id}", response_model=PersonResponse)
 async def update_person(
     person_id: str,
-    person_data: PersonUpdateRequest,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database)
+    name: str = Form(None),
+    email: str = Form(None),
+    department: str = Form(None),
+    position: str = Form(None),
+    phone: str = Form(None),
+    notes: str = Form(None),
+    status: str = Form(None),
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
-    """Update person information."""
-    try:
-        # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
-            raise PersonNotFoundException(person_id)
-        
-        # Build update data
-        update_data = {}
-        if person_data.name is not None:
-            update_data["name"] = person_data.name
-        if person_data.description is not None:
-            update_data["description"] = person_data.description
-        if person_data.active is not None:
-            update_data["active"] = person_data.active
-        
-        if not update_data:
-            # No changes
-            return PersonResponse(**person_result.data[0])
-        
-        # Update person
-        result = db.table("persons").update(update_data).eq("id", person_id).execute()
-        
-        if not result.data:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update person"
-            )
-        
-        updated_person = result.data[0]
-        
-        logger.info(f"Person updated: {person_id}")
-        
-        return PersonResponse(**updated_person)
-        
-    except PersonNotFoundException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update person {person_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update person"
-        )
-
+    """Atualizar dados de uma pessoa"""
+    # TODO: Implementar atualização no banco
+    pass
 
 @router.delete("/{person_id}")
 async def delete_person(
     person_id: str,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database),
-    vector_db=Depends(get_vector_database_service)
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
 ):
-    """Delete person and all associated data."""
+    """Remover pessoa e seus embeddings"""
     try:
-        # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
-            raise PersonNotFoundException(person_id)
+        vector_service = get_vector_database_service()
         
-        # Delete embeddings from vector database
-        vector_db.delete_person_embeddings(person_id)
+        # Remover do Pinecone
+        vector_service.delete_person_vectors(person_id)
         
-        # Delete person from database
-        db.table("persons").delete().eq("id", person_id).execute()
+        # TODO: Remover do banco de dados
         
-        logger.info(f"Person deleted: {person_id}")
+        return {"message": "Pessoa removida com sucesso"}
         
-        return JSONResponse(
-            content={"message": f"Person {person_id} deleted successfully"}
-        )
-        
-    except PersonNotFoundException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to delete person {person_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete person"
-        )
+        raise HTTPException(500, f"Erro ao remover pessoa: {str(e)}")
+
+@router.get("/{person_id}/history")
+async def get_person_history(
+    person_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_database),
+    current_user = Depends(get_current_user)
+):
+    """Obter histórico de reconhecimentos de uma pessoa"""
+    # Mock data
+    mock_history = [
+        {
+            'id': '1',
+            'timestamp': '2024-08-05T14:30:00Z',
+            'confidence': 0.95,
+            'location': 'Entrada Principal',
+            'camera_id': 'CAM-001',
+            'image_url': '/api/placeholder/300/300',
+            'processing_time': 1.2,
+            'status': 'success'
+        }
+    ]
+    
+    return mock_history[skip:skip+limit]
