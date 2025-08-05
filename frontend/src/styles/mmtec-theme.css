@@ -1,0 +1,385 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* MMTec Brand Colors */
+  --mmtec-primary: #1a365d;
+  --mmtec-secondary: #2d5a87;
+  --mmtec-accent: #10b981;
+  --mmtec-success: #059669;
+  --mmtec-warning: #d97706;
+  --mmtec-error: #dc2626;
+  --mmtec-info: #0891b2;
+  
+  /* Gradients */
+  --mmtec-gradient-primary: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+  --mmtec-gradient-accent: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --mmtec-gradient-dark: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  
+  /* Shadows */
+  --mmtec-shadow-sm: 0 1px 2px 0 rgba(26, 54, 93, 0.05);
+  --mmtec-shadow-md: 0 4px 6px -1px rgba(26, 54, 93, 0.1);
+  --mmtec-shadow-lg: 0 10px 15px -3px rgba(26, 54, 93, 0.1);
+  --mmtec-shadow-xl: 0 20px 25px -5px rgba(26, 54, 93, 0.1);
+  
+  /* Spacing */
+  --mmtec-spacing-xs: 0.25rem;
+  --mmtec-spacing-sm: 0.5rem;
+  --mmtec-spacing-md: 1rem;
+  --mmtec-spacing-lg: 1.5rem;
+  --mmtec-spacing-xl: 2rem;
+  --mmtec-spacing-2xl: 3rem;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  html {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply antialiased bg-slate-50;
+    color: #334155;
+    line-height: 1.6;
+  }
+}
+
+@layer components {
+  /* MMTec Button System */
+  .btn-mmtec-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white rounded-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    background: var(--mmtec-gradient-primary);
+    box-shadow: var(--mmtec-shadow-md);
+  }
+  
+  .btn-mmtec-primary:hover {
+    box-shadow: var(--mmtec-shadow-lg);
+  }
+  
+  .btn-mmtec-accent {
+    @apply inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white rounded-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    background: var(--mmtec-gradient-accent);
+    box-shadow: var(--mmtec-shadow-md);
+  }
+  
+  .btn-mmtec-outline {
+    @apply inline-flex items-center justify-center px-6 py-3 text-sm font-semibold rounded-lg border-2 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    border-color: var(--mmtec-primary);
+    color: var(--mmtec-primary);
+  }
+  
+  .btn-mmtec-outline:hover {
+    background: var(--mmtec-primary);
+    color: white;
+  }
+  
+  /* MMTec Card System */
+  .card-mmtec {
+    @apply bg-white rounded-2xl border border-slate-200 transition-all duration-200 hover:shadow-lg;
+    box-shadow: var(--mmtec-shadow-sm);
+  }
+  
+  .card-mmtec:hover {
+    box-shadow: var(--mmtec-shadow-xl);
+    transform: translateY(-2px);
+  }
+  
+  .card-mmtec-gradient {
+    @apply text-white rounded-2xl border-0 transition-all duration-200 hover:shadow-lg;
+    background: var(--mmtec-gradient-primary);
+    box-shadow: var(--mmtec-shadow-md);
+  }
+  
+  /* MMTec Input System */
+  .input-mmtec {
+    @apply w-full px-4 py-3 text-sm rounded-lg border border-slate-300 bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:border-transparent;
+    --tw-ring-color: var(--mmtec-accent);
+  }
+  
+  .input-mmtec:focus {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  }
+  
+  /* Face ID Authentication Styles */
+  .faceid-container {
+    @apply relative overflow-hidden rounded-3xl;
+    background: var(--mmtec-gradient-dark);
+    min-height: 500px;
+  }
+  
+  .faceid-scanner {
+    @apply absolute inset-0 flex items-center justify-center;
+  }
+  
+  .faceid-frame {
+    @apply relative rounded-2xl border-4 overflow-hidden;
+    border-color: var(--mmtec-accent);
+    width: 320px;
+    height: 240px;
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+  }
+  
+  .faceid-scanning {
+    animation: faceidPulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes faceidPulse {
+    0%, 100% {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
+    }
+  }
+
+  /* Status Indicators */
+  .status-success {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    background-color: rgba(5, 150, 105, 0.1);
+    color: var(--mmtec-success);
+  }
+  
+  .status-warning {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    background-color: rgba(217, 119, 6, 0.1);
+    color: var(--mmtec-warning);
+  }
+  
+  .status-error {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    background-color: rgba(220, 38, 38, 0.1);
+    color: var(--mmtec-error);
+  }
+  
+  /* Loading States */
+  .loading-mmtec {
+    @apply inline-block animate-spin rounded-full border-4 border-slate-200;
+    border-top-color: var(--mmtec-accent);
+    width: 2rem;
+    height: 2rem;
+  }
+  
+  .loading-mmtec-lg {
+    @apply inline-block animate-spin rounded-full border-4 border-slate-200;
+    border-top-color: var(--mmtec-accent);
+    width: 3rem;
+    height: 3rem;
+  }
+  
+  /* MMTec Layout */
+  .mmtec-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .mmtec-section {
+    @apply py-12 lg:py-16;
+  }
+  
+  /* Authentication Layout */
+  .auth-layout {
+    @apply min-h-screen flex;
+    background: var(--mmtec-gradient-dark);
+  }
+  
+  .auth-panel {
+    @apply flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24;
+  }
+  
+  .auth-brand {
+    @apply flex-shrink-0 flex items-center justify-center;
+    background: var(--mmtec-gradient-primary);
+  }
+}
+
+@layer utilities {
+  /* MMTec Text Utilities */
+  .text-mmtec-primary {
+    color: var(--mmtec-primary);
+  }
+  
+  .text-mmtec-accent {
+    color: var(--mmtec-accent);
+  }
+  
+  .bg-mmtec-primary {
+    background-color: var(--mmtec-primary);
+  }
+  
+  .bg-mmtec-accent {
+    background-color: var(--mmtec-accent);
+  }
+  
+  .bg-mmtec-gradient {
+    background: var(--mmtec-gradient-primary);
+  }
+  
+  .bg-mmtec-gradient-accent {
+    background: var(--mmtec-gradient-accent);
+  }
+  
+  /* Animation Utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.3s ease-in-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive table */
+.table-responsive {
+  @apply overflow-x-auto;
+}
+
+.table-responsive table {
+  @apply min-w-full;
+}
+
+/* Custom focus styles */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+}
+
+/* Custom Scrollbar MMTec Style */
+.mmtec-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mmtec-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.mmtec-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--mmtec-accent);
+  border-radius: 4px;
+}
+
+.mmtec-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--mmtec-success);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .faceid-frame {
+    width: 280px;
+    height: 210px;
+  }
+  
+  .mmtec-container {
+    @apply px-4;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .card-mmtec {
+    @apply bg-slate-800 border-slate-700;
+  }
+  
+  .input-mmtec {
+    @apply bg-slate-800 border-slate-600 text-white;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  /* Custom slider styles */
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: var(--mmtec-accent);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: var(--mmtec-accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-webkit-slider-track {
+  height: 8px;
+  border-radius: 5px;
+  background: #e2e8f0;
+}
+
+.slider::-moz-range-track {
+  height: 8px;
+  border-radius: 5px;
+  background: #e2e8f0;
+}
+}

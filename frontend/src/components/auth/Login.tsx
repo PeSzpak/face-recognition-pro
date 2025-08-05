@@ -1,218 +1,160 @@
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Eye, EyeOff, Brain, Lock, User, AlertCircle } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
-import Loading from '@/components/ui/Loading'
+import { Shield, User, Lock, Eye, EyeOff } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
+import toast from 'react-hot-toast'
 
 const Login: React.FC = () => {
-  const { login, isLoading, error } = useAuth()
-  const [formData, setFormData] = useState({
+  const [credentials, setCredentials] = useState({
     username: '',
-    password: '',
-    rememberMe: false
+    password: ''
   })
   const [showPassword, setShowPassword] = useState(false)
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }))
-    
-    // Clear field error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }))
-    }
-  }
-
-  const validateForm = () => {
-    const errors: Record<string, string> = {}
-    
-    if (!formData.username.trim()) {
-      errors.username = 'Username é obrigatório'
-    }
-    
-    if (!formData.password) {
-      errors.password = 'Senha é obrigatória'
-    } else if (formData.password.length < 6) {
-      errors.password = 'Senha deve ter pelo menos 6 caracteres'
-    }
-    
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }
+  const [loading, setLoading] = useState(false)
+  
+  const navigate = useNavigate()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!validateForm()) return
-    
+    setLoading(true)
+
     try {
-      await login(formData.username, formData.password, formData.rememberMe)
+      // Simular login
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      if (credentials.username === 'admin' && credentials.password === 'admin') {
+        const user = {
+          id: '1',
+          name: 'Administrador MMTec',
+          username: 'admin',
+          role: 'admin'
+        }
+        
+        login(user, 'fake-token-123')
+        toast.success('Login realizado com sucesso!')
+        navigate('/dashboard')
+      } else {
+        toast.error('Credenciais inválidas!')
+      }
     } catch (error) {
-      // Error is handled in AuthContext
+      toast.error('Erro no login. Tente novamente.')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        {/* Header */}
-        <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4">
-            <Brain className="h-8 w-8 text-white" />
+    <div className="auth-layout">
+      {/* Brand Panel */}
+      <div className="hidden lg:flex lg:flex-1 auth-brand">
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-8">
+            <Shield className="h-10 w-10 text-mmtec-primary" />
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-900">
+          <h1 className="text-4xl font-bold text-white mb-4">MMTec</h1>
+          <h2 className="text-xl font-medium text-blue-100 mb-6">
             Face Recognition Pro
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Entre em sua conta para continuar
+          <p className="text-blue-200 max-w-md leading-relaxed">
+            Sistema profissional de reconhecimento facial com tecnologia avançada 
+            e recursos de anti-spoofing.
           </p>
         </div>
+      </div>
 
-        {/* Login Form */}
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {/* Error Alert */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-3">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
+      {/* Login Panel */}
+      <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-20 xl:px-24 bg-white">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="lg:hidden w-16 h-16 bg-mmtec-gradient rounded-xl mx-auto mb-4 flex items-center justify-center">
+              <Shield className="h-8 w-8 text-white" />
             </div>
-          )}
+            <h2 className="text-3xl font-bold text-slate-900">Entrar</h2>
+            <p className="mt-2 text-slate-600">
+              Acesse o sistema MMTec Face Recognition
+            </p>
+          </div>
 
-          <div className="space-y-4">
-            {/* Username Field */}
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-                Username
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Usuário
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
-                </div>
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
-                  id="username"
-                  name="username"
                   type="text"
+                  value={credentials.username}
+                  onChange={(e) => setCredentials({
+                    ...credentials,
+                    username: e.target.value
+                  })}
+                  className="input-mmtec pl-10"
+                  placeholder="Digite seu usuário"
                   required
-                  value={formData.username}
-                  onChange={handleChange}
-                  className={`input-field pl-10 ${formErrors.username ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder="Digite seu username"
-                  disabled={isLoading}
                 />
               </div>
-              {formErrors.username && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.username}</p>
-              )}
             </div>
 
-            {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
                 Senha
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
-                  id="password"
-                  name="password"
                   type={showPassword ? 'text' : 'password'}
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className={`input-field pl-10 pr-10 ${formErrors.password ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
+                  value={credentials.password}
+                  onChange={(e) => setCredentials({
+                    ...credentials,
+                    password: e.target.value
+                  })}
+                  className="input-mmtec pl-10 pr-10"
                   placeholder="Digite sua senha"
-                  disabled={isLoading}
+                  required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                  disabled={isLoading}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formErrors.password && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full btn-mmtec-primary"
+            >
+              {loading ? (
+                <>
+                  <div className="loading-mmtec mr-2" />
+                  Entrando...
+                </>
+              ) : (
+                'Entrar'
               )}
-            </div>
+            </button>
+          </form>
+
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => navigate('/face-auth')}
+              className="btn-mmtec-outline"
+            >
+              <Shield className="h-4 w-4 mr-2" />
+              Usar Face ID
+            </button>
           </div>
 
-          {/* Remember Me & Forgot Password */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="rememberMe"
-                name="rememberMe"
-                type="checkbox"
-                checked={formData.rememberMe}
-                onChange={handleChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                disabled={isLoading}
-              />
-              <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-700">
-                Lembrar de mim
-              </label>
-            </div>
-
-            <div className="text-sm">
-              <Link
-                to="/forgot-password"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Esqueceu a senha?
-              </Link>
-            </div>
+          <div className="mt-8 text-center text-sm text-slate-500">
+            <p>Credenciais de teste:</p>
+            <p><strong>Usuário:</strong> admin | <strong>Senha:</strong> admin</p>
           </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="btn-primary w-full flex items-center justify-center space-x-2 py-3"
-          >
-            {isLoading ? (
-              <>
-                <Loading size="sm" />
-                <span>Entrando...</span>
-              </>
-            ) : (
-              <span>Entrar</span>
-            )}
-          </button>
-
-          {/* Demo Credentials */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-sm font-medium text-blue-900 mb-2">Credenciais de demonstração:</h4>
-            <div className="text-sm text-blue-700 space-y-1">
-              <div><strong>Username:</strong> admin</div>
-              <div><strong>Senha:</strong> admin123</div>
-            </div>
-          </div>
-
-          {/* Register Link */}
-          <div className="text-center">
-            <p className="text-sm text-gray-600">
-              Não tem uma conta?{' '}
-              <Link
-                to="/register"
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Criar conta
-              </Link>
-            </p>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   )

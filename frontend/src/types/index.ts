@@ -236,3 +236,18 @@ export interface SessionInfo {
   last_active: string
   is_current: boolean
 }
+
+// Face ID Types (para o novo sistema)
+export interface FaceIDResult {
+  recognized: boolean
+  person_name?: string
+  person_id?: string
+  confidence?: number
+  liveness_score?: number
+  spoofing_detected?: boolean
+  status: 'success' | 'no_match' | 'no_face' | 'error' | 'spoofing_detected'
+  processing_time?: number
+  message?: string
+  motion_history?: number[]
+  face_quality?: 'high' | 'medium' | 'low'
+}
