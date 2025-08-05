@@ -103,7 +103,7 @@ export const RECOGNITION_CONFIG = {
     'image/jpg', 
     'image/png',
     'image/webp'
-  ] as string[], // Tornar mais flexível
+  ] as string[], // Make more flexible
 } as const
 
 // UI Configuration
