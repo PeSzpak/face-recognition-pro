@@ -54,35 +54,59 @@ export interface PersonListResponse {
   per_page: number;
 }
 
-export interface RecognitionResult {
-  confidence: number;
-  status: 'success' | 'no_match' | 'no_face' | 'error';
-  processing_time: number;
-  person_id?: string;
-  person_name?: string;
-  name?: string;
-  message?: string;
+// Recognition Types 
+export interface RecognitionRequest {
+  image_base64?: string
+  file?: File
+  threshold?: number
 }
 
-export interface RecognitionRequest {
-  image_base64: string;
-  threshold?: number;
+export interface RecognitionResult {
+  person_id?: string
+  person_name?: string
+  confidence?: number
+  face_location?: {
+    top: number
+    right: number
+    bottom: number
+    left: number
+  }
+  processing_time?: number
+  recognized?: boolean
+  status?: 'success' | 'error' | 'not_found' | 'no_match' | 'no_face'
+  message?: string
+}
+
+export interface RecognitionHistory {
+  id: string
+  person_id?: string
+  person_name?: string
+  confidence?: number
+  image_path: string
+  recognized: boolean
+  timestamp: string
+  processing_time?: number
 }
 
 export interface RecognitionLog {
-  id: string;
-  timestamp: string;
-  status: string;
-  person_name?: string;
-  confidence?: number;
-  processing_time: number;
-  created_at: string;
+  id: string
+  person_id?: string
+  person_name?: string
+  confidence?: number
+  image_path: string
+  status: 'success' | 'error' | 'not_found' | 'no_match' | 'no_face'
+  timestamp: string
+  processing_time?: number
+  error_message?: string
 }
 
 export interface RecognitionStats {
-  total_recognitions: number;
-  successful_recognitions: number;
-  accuracy: number;
+  total_recognitions: number
+  successful_recognitions: number
+  failed_recognitions: number
+  average_confidence: number
+  total_processing_time: number
+  average_processing_time: number
 }
 
 export interface DashboardStats {
@@ -155,4 +179,60 @@ export interface ImageUploadProps {
 
 export interface WebcamCaptureProps {
   onCapture: (imageData: string) => void;
+}
+
+// Auth Types
+export interface LoginRequest {
+  username: string
+  password: string
+  remember_me?: boolean
+}
+
+export interface LoginResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
+  user: User
+}
+
+export interface RegisterRequest {
+  username: string
+  email: string
+  password: string
+  full_name: string
+}
+
+export interface AuthState {
+  user: User | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
+}
+
+export interface TokenPayload {
+  sub: string
+  username: string
+  exp: number
+  iat: number
+}
+
+// Password Reset
+export interface PasswordResetRequest {
+  email: string
+}
+
+export interface PasswordResetConfirm {
+  token: string
+  new_password: string
+}
+
+// Session Management
+export interface SessionInfo {
+  device: string
+  ip_address: string
+  user_agent: string
+  created_at: string
+  last_active: string
+  is_current: boolean
 }
