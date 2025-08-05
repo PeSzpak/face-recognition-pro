@@ -24,6 +24,6 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src", "../../people"],
   "exclude": ["src/components/_disabled", "node_modules", "dist"]
 }

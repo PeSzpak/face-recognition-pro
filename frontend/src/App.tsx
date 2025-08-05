@@ -10,7 +10,7 @@ import Login from "./components/auth/Login";
 import FaceIDAuth from "./components/auth/FaceIDAuth";
 import Dashboard from "./components/dashboard/Dashboard";
 import Recognition from "./components/recognition/Recognition";
-import People from "./components/people/People";
+import People from "../../../people/People";
 import Analytics from "./components/analytics/Analytics";
 import Settings from "./components/settings/Settings";
 import MMTecLayout from "./components/layout/MMTecLayout";
