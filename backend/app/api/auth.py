@@ -18,7 +18,7 @@ router = APIRouter()
 async def register(user_data: UserCreate, db=Depends(get_database)):
     """Register a new user."""
     try:
-        # Check if user already exists
+        # Analisa se o email ou nome ja foi usando para validar criação do usuario 
         existing_user = db.table("users").select("*").eq("email", user_data.email).execute()
         if existing_user.data:
             raise HTTPException(
@@ -33,10 +33,10 @@ async def register(user_data: UserCreate, db=Depends(get_database)):
                 detail="Username already taken"
             )
         
-        # Hash password
+        # transforma a senha em caracteres alfanumericos para mais segurança ao salvar no banco de dados
         hashed_password = get_password_hash(user_data.password)
         
-        # Create user
+        # Cria o usuario baseado nos campos preenchidos no formulario de criação
         user_dict = {
             "email": user_data.email,
             "username": user_data.username,
@@ -55,7 +55,7 @@ async def register(user_data: UserCreate, db=Depends(get_database)):
         
         created_user = result.data[0]
         
-        # Remove password from response
+        # Não permite que informações sensiveis com a senha sejam mostrados ao criar o usuario 
         user_response = User(**created_user)
         
         logger.info(f"User registered successfully: {user_data.email}")
@@ -75,7 +75,7 @@ async def register(user_data: UserCreate, db=Depends(get_database)):
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get_database)):
     """Login user and return access token."""
     try:
-        # Find user by username or email
+        # Encontra o usuario filtrando por nome e email 
         user_result = db.table("users").select("*").or_(
             f"username.eq.{form_data.username},email.eq.{form_data.username}"
         ).execute()
@@ -85,15 +85,15 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get
         
         user = user_result.data[0]
         
-        # Verify password
+        # verifica se a senha (alfanumerica) bate com a do banco de dados 
         if not verify_password(form_data.password, user["hashed_password"]):
             raise AuthenticationException("Invalid username/email or password")
         
-        # Check if user is active
+        # verifica se o usuario esta ativo ou inativo
         if not user.get("is_active", True):
             raise AuthenticationException("Account is disabled")
         
-        # Create access token
+        # Cria um token de aceeso com limite de temppo de 30min
         access_token_expires = timedelta(minutes=30)
         access_token = create_access_token(
             data={"sub": user["id"], "username": user["username"]},
@@ -139,7 +139,7 @@ async def get_current_user_info(current_user=Depends(get_current_user), db=Depen
 async def refresh_token(current_user=Depends(get_current_user)):
     """Refresh access token."""
     try:
-        # Create new access token
+        # Cria um novo token de acesso com o mesmo limite de tempo de 30 min 
         access_token_expires = timedelta(minutes=30)
         access_token = create_access_token(
             data={"sub": current_user["sub"], "username": current_user["username"]},

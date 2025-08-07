@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, APIRouter, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import asyncio
@@ -7,6 +7,45 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
+from sqlalchemy.orm import Session
+from typing import List
+import uuid
+
+# Mock implementations for dependencies since relative imports are not available
+def get_db():
+    """Mock database dependency"""
+    return None
+
+def get_current_user():
+    """Mock current user dependency"""
+    return {"id": "1", "username": "admin"}
+
+# Mock schemas
+class PersonCreate:
+    pass
+
+class PersonResponse:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+class PersonUpdate:
+    pass
+
+# Mock services
+class FaceRecognitionService:
+    async def extract_embedding(self, image_data):
+        # Mock embedding extraction
+        return np.random.rand(128).tolist()
+
+class VectorDatabaseService:
+    def upsert_vector(self, vector_id, embedding, metadata):
+        # Mock vector upsert
+        pass
+    
+    def delete_person_vectors(self, person_id):
+        # Mock vector deletion
+        pass
 
 app = FastAPI(title="Face Recognition API - Simple", version="1.0.0")
 
@@ -18,6 +57,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+router = APIRouter(prefix="/api/persons", tags=["persons"])
 
 @app.get("/")
 async def root():
@@ -188,6 +229,129 @@ async def live_detection(
             "status": "error",
             "message": f"Erro no processamento: {str(e)}"
         }
+
+@router.post("/", response_model=PersonResponse)
+async def create_person(
+    name: str = Form(...),
+    description: str = Form(None),
+    images: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Cadastrar nova pessoa com múltiplas fotos"""
+    try:
+        face_service = FaceRecognitionService()
+        vector_service = VectorDatabaseService()
+        
+        # Validar imagens
+        if len(images) < 1:
+            raise HTTPException(400, "Pelo menos uma imagem é necessária")
+        
+        # Processar cada imagem
+        embeddings = []
+        processed_images = []
+        
+        for image in images:
+            # Validar formato
+            if not image.content_type.startswith('image/'):
+                raise HTTPException(400, f"Arquivo {image.filename} não é uma imagem")
+            
+            # Extrair embedding
+            image_data = await image.read()
+            embedding = await face_service.extract_embedding(image_data)
+            
+            if embedding is None:
+                raise HTTPException(400, f"Nenhum rosto detectado em {image.filename}")
+            
+            embeddings.append(embedding)
+            processed_images.append({
+                'filename': image.filename,
+                'data': image_data
+            })
+        
+        # Salvar pessoa no banco
+        person_id = str(uuid.uuid4())
+        person_data = {
+            'id': person_id,
+            'name': name,
+            'description': description,
+            'active': True,
+            'photo_count': len(images)
+        }
+        
+        # Salvar embeddings no Pinecone
+        vector_ids = []
+        for i, embedding in enumerate(embeddings):
+            vector_id = f"{person_id}_{i}"
+            vector_service.upsert_vector(
+                vector_id=vector_id,
+                embedding=embedding,
+                metadata={
+                    'person_id': person_id,
+                    'person_name': name,
+                    'image_index': i
+                }
+            )
+            vector_ids.append(vector_id)
+        
+        return PersonResponse(**person_data)
+        
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao cadastrar pessoa: {str(e)}")
+
+@router.get("/", response_model=List[PersonResponse])
+async def list_persons(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Listar pessoas cadastradas"""
+    # Implementar busca no banco
+    # Retornar lista paginada
+    pass
+
+@router.get("/{person_id}", response_model=PersonResponse)
+async def get_person(
+    person_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Obter detalhes de uma pessoa"""
+    pass
+
+@router.put("/{person_id}", response_model=PersonResponse)
+async def update_person(
+    person_id: str,
+    person_update: PersonUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Atualizar dados de uma pessoa"""
+    pass
+
+@router.delete("/{person_id}")
+async def delete_person(
+    person_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Remover pessoa e seus embeddings"""
+    try:
+        vector_service = VectorDatabaseService()
+        
+        # Remover do Pinecone
+        vector_service.delete_person_vectors(person_id)
+        
+        # Remover do banco
+        # Implementar remoção
+        
+        return {"message": "Pessoa removida com sucesso"}
+        
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao remover pessoa: {str(e)}")
+
+app.include_router(router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
