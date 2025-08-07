@@ -1,254 +1,271 @@
-import time
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
-from fastapi.responses import JSONResponse
-from app.core.database import get_database
-from app.core.security import get_current_user
-from app.services.face_recognition import get_face_recognition_service, face_recognition_service
-from app.services.vector_database import get_vector_database_service
-from app.schemas.recognition import (
-    RecognitionRequest, RecognitionResult, RecognitionLogResponse, 
-    RecognitionStatsResponse
-)
-from app.models.recognition_log import RecognitionLogCreate
-from app.core.exceptions import (
-    InvalidImageException, NoFaceDetectedException, 
-    FaceRecognitionException
-)
+import cv2
+import numpy as np
+from deepface import DeepFace
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import tempfile
+import os
+from typing import Dict, List, Optional
 import logging
+from functools import lru_cache
+import pickle
+import hashlib
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
-
-@router.post("/identify", response_model=RecognitionResult)
-async def identify_face(
-    image_base64: str = Form(..., description="Base64 encoded image"),
-    threshold: Optional[float] = Form(None, description="Custom similarity threshold"),
-    current_user=Depends(get_current_user),
-    db=Depends(get_database),
-    face_service=Depends(get_face_recognition_service),
-    vector_db=Depends(get_vector_database_service)
-):
-    """Identify a person from an uploaded image."""
-    try:
-        start_time = time.time()
+class OptimizedFaceRecognitionService:
+    def __init__(self):
+        self.model_name = "Facenet512"
+        self.detector_backend = "opencv"
+        self.confidence_threshold = 0.6
         
-        # Process image and extract embeddings
-        cv2_image, embeddings_data = face_service.process_image_for_recognition(image_base64)
+        # Pool otimizado para I/O e CPU
+        self.io_executor = ThreadPoolExecutor(max_workers=8)
+        self.cpu_executor = ProcessPoolExecutor(max_workers=4)
         
-        if not embeddings_data:
-            processing_time = time.time() - start_time
+        # Cache para embeddings frequentes
+        self.embedding_cache = {}
+        self.max_cache_size = 1000
+        
+        # Pré-carregar modelo (importante!)
+        self._preload_model()
+        
+    def _preload_model(self):
+        """Pré-carregar modelo DeepFace na inicialização"""
+        try:
+            # Criar imagem dummy para forçar load do modelo
+            dummy_image = np.zeros((224, 224, 3), dtype=np.uint8)
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                cv2.imwrite(tmp.name, dummy_image)
+                
+                # Forçar load do modelo
+                DeepFace.represent(
+                    img_path=tmp.name,
+                    model_name=self.model_name,
+                    detector_backend=self.detector_backend,
+                    enforce_detection=False
+                )
+                os.unlink(tmp.name)
+                
+            logger.info("✅ Modelo DeepFace pré-carregado com sucesso")
             
-            # Log failed recognition
-            log_data = {
-                "person_id": None,
-                "confidence": 0.0,
-                "status": "no_face",
-                "processing_time": processing_time
-            }
-            db.table("recognition_logs").insert(log_data).execute()
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao pré-carregar modelo: {e}")
+    
+    async def recognize_face_optimized(self, image_data: bytes, vector_db, db_client, 
+                                     batch_size: int = 100) -> Dict:
+        """Reconhecimento ULTRA-OTIMIZADO para produção"""
+        start_time = asyncio.get_event_loop().time()
+        
+        try:
+            # 1. Cache check por hash da imagem
+            image_hash = hashlib.md5(image_data).hexdigest()
+            if image_hash in self.embedding_cache:
+                logger.info("⚡ Cache hit - usando embedding cacheado")
+                embedding = self.embedding_cache[image_hash]
+            else:
+                # 2. Extração otimizada de embedding
+                embedding = await self._extract_embedding_optimized(image_data)
+                
+                if embedding is None:
+                    return {
+                        "status": "no_face",
+                        "message": "Nenhuma face detectada",
+                        "confidence": 0.0,
+                        "optimization": "fast_detection"
+                    }
+                
+                # 3. Cache do embedding (LRU)
+                self._cache_embedding(image_hash, embedding)
             
-            return RecognitionResult(
-                person_id=None,
-                person_name=None,
-                confidence=0.0,
-                status="no_face",
-                processing_time=processing_time,
-                message="No face detected in the image"
-            )
-        
-        # Get the best quality embedding
-        best_embedding = max(embeddings_data, key=lambda x: x['quality_score'])
-        query_embedding = best_embedding['embedding']
-        
-        # Search for similar faces in vector database
-        similarity_threshold = threshold or face_service.similarity_threshold
-        matches = vector_db.search_similar_faces(
-            query_embedding, 
-            top_k=5, 
-            threshold=similarity_threshold
-        )
-        
-        processing_time = time.time() - start_time
-        
-        if matches:
-            # Get the best match
+            # 4. Busca vetorial otimizada
+            matches = await self._search_optimized(embedding, vector_db, batch_size)
+            
+            if not matches:
+                return {
+                    "status": "no_match",
+                    "message": "Pessoa não reconhecida",
+                    "confidence": 0.0,
+                    "search_time": round(asyncio.get_event_loop().time() - start_time, 3)
+                }
+            
+            # 5. Busca em lote no banco (mais eficiente)
             best_match = matches[0]
-            person_id = best_match["person_id"]
-            confidence = best_match["similarity"]
+            person_data = await self._get_person_batch(best_match["person_id"], db_client)
             
-            # Get person details from database
-            person_result = db.table("persons").select("*").eq("id", person_id).execute()
-            person_name = person_result.data[0]["name"] if person_result.data else "Unknown"
-            
-            # Log successful recognition
-            log_data = {
-                "person_id": person_id,
-                "confidence": confidence,
+            return {
                 "status": "success",
-                "processing_time": processing_time
+                "message": f"Reconhecido: {person_data.get('name', 'Desconhecido')}",
+                "confidence": round(best_match["similarity"], 3),
+                "person_id": best_match["person_id"],
+                "person_name": person_data.get("name"),
+                "person_data": person_data,
+                "processing_time": round(asyncio.get_event_loop().time() - start_time, 3),
+                "optimization": "production_optimized",
+                "cache_used": image_hash in self.embedding_cache
             }
-            db.table("recognition_logs").insert(log_data).execute()
             
-            logger.info(f"Face identified: {person_name} (confidence: {confidence:.3f})")
-            
-            return RecognitionResult(
-                person_id=person_id,
-                person_name=person_name,
-                confidence=confidence,
-                status="success",
-                processing_time=processing_time,
-                message=f"Person identified with {confidence:.1%} confidence"
-            )
-        else:
-            # No match found
-            log_data = {
-                "person_id": None,
-                "confidence": 0.0,
-                "status": "no_match",
-                "processing_time": processing_time
+        except Exception as e:
+            logger.error(f"❌ Erro no reconhecimento otimizado: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+                "processing_time": round(asyncio.get_event_loop().time() - start_time, 3)
             }
-            db.table("recognition_logs").insert(log_data).execute()
+    
+    async def _extract_embedding_optimized(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Extração de embedding OTIMIZADA"""
+        try:
+            # Usar processamento paralelo
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(
+                self.cpu_executor,
+                self._extract_embedding_parallel,
+                image_data
+            )
+            return embedding
             
-            return RecognitionResult(
-                person_id=None,
-                person_name=None,
-                confidence=0.0,
-                status="no_match",
-                processing_time=processing_time,
-                message="No matching person found in database"
+        except Exception as e:
+            logger.error(f"❌ Erro na extração otimizada: {e}")
+            return None
+    
+    def _extract_embedding_parallel(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Extração paralela com otimizações"""
+        temp_file = None
+        try:
+            # 1. Otimizar imagem antes do processamento
+            optimized_image = self._optimize_image(image_data)
+            
+            if optimized_image is None:
+                return None
+            
+            # 2. Salvar temporariamente
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                cv2.imwrite(temp_file.name, optimized_image)
+                temp_file_path = temp_file.name
+            
+            # 3. DeepFace otimizado
+            embedding_result = DeepFace.represent(
+                img_path=temp_file_path,
+                model_name=self.model_name,
+                detector_backend=self.detector_backend,
+                enforce_detection=True,
+                align=True,
+                normalization='Facenet2018'  # Normalização otimizada
             )
             
-    except (InvalidImageException, NoFaceDetectedException, FaceRecognitionException):
-        raise
-    except Exception as e:
-        logger.error(f"Face identification failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Face identification failed"
-        )
-
-
-@router.get("/logs", response_model=List[RecognitionLogResponse])
-async def get_recognition_logs(
-    page: int = 1,
-    size: int = 50,
-    status_filter: Optional[str] = None,
-    current_user=Depends(get_current_user),
-    db=Depends(get_database)
-):
-    """Get recognition logs with pagination."""
-    try:
-        query = db.table("recognition_logs").select("""
-            id, person_id, confidence, status, processing_time, created_at,
-            persons.name as person_name
-        """).join("persons", "recognition_logs.person_id", "persons.id", how="left")
-        
-        if status_filter:
-            query = query.eq("status", status_filter)
-        
-        # Apply pagination
-        offset = (page - 1) * size
-        result = query.order("created_at", desc=True).range(offset, offset + size - 1).execute()
-        
-        logs = []
-        if result.data:
-            for log_data in result.data:
-                logs.append(RecognitionLogResponse(**log_data))
-        
-        return logs
-        
-    except Exception as e:
-        logger.error(f"Failed to get recognition logs: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve recognition logs"
-        )
-
-
-@router.get("/stats", response_model=RecognitionStatsResponse)
-async def get_recognition_stats(
-    current_user=Depends(get_current_user),
-    db=Depends(get_database)
-):
-    """Get recognition statistics."""
-    try:
-        # Get all recognition logs
-        all_logs = db.table("recognition_logs").select("*").execute()
-        
-        if not all_logs.data:
-            return RecognitionStatsResponse(
-                total_recognitions=0,
-                successful_recognitions=0,
-                success_rate=0.0,
-                average_confidence=0.0,
-                average_processing_time=0.0,
-                recognitions_today=0,
-                recognitions_this_week=0,
-                recognitions_this_month=0
+            if embedding_result and len(embedding_result) > 0:
+                embedding = np.array(embedding_result[0]["embedding"])
+                
+                # Normalização adicional para melhor performance
+                embedding = embedding / np.linalg.norm(embedding)
+                
+                return embedding
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na extração paralela: {e}")
+            return None
+            
+        finally:
+            if temp_file and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+    
+    def _optimize_image(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Otimizar imagem para melhor performance"""
+        try:
+            # Decodificar imagem
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if image is None:
+                return None
+            
+            # Redimensionar se muito grande (otimização importante!)
+            height, width = image.shape[:2]
+            max_size = 1024  # Máximo para boa performance
+            
+            if max(height, width) > max_size:
+                if width > height:
+                    new_width = max_size
+                    new_height = int(height * max_size / width)
+                else:
+                    new_height = max_size
+                    new_width = int(width * max_size / height)
+                
+                image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+                logger.info(f"🔧 Imagem redimensionada de {width}x{height} para {new_width}x{new_height}")
+            
+            # Melhorar qualidade
+            image = cv2.bilateralFilter(image, 9, 75, 75)
+            
+            return image
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na otimização da imagem: {e}")
+            return None
+    
+    async def _search_optimized(self, embedding: np.ndarray, vector_db, batch_size: int) -> List[Dict]:
+        """Busca vetorial otimizada"""
+        try:
+            loop = asyncio.get_event_loop()
+            matches = await loop.run_in_executor(
+                self.io_executor,
+                vector_db.search_similar_faces_batch,
+                embedding.tolist(),
+                batch_size,
+                self.confidence_threshold
             )
-        
-        logs_data = all_logs.data
-        total_recognitions = len(logs_data)
-        successful_logs = [log for log in logs_data if log["status"] == "success"]
-        successful_recognitions = len(successful_logs)
-        
-        # Calculate statistics
-        success_rate = (successful_recognitions / total_recognitions * 100) if total_recognitions > 0 else 0
-        average_confidence = sum(log["confidence"] for log in successful_logs) / len(successful_logs) if successful_logs else 0
-        average_processing_time = sum(log["processing_time"] for log in logs_data) / len(logs_data)
-        
-        # Time-based counts (simplified - would need proper date filtering in production)
-        from datetime import datetime, timedelta
-        today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
-        month_ago = today - timedelta(days=30)
-        
-        recognitions_today = len([log for log in logs_data 
-                                if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() == today])
-        recognitions_this_week = len([log for log in logs_data 
-                                    if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() >= week_ago])
-        recognitions_this_month = len([log for log in logs_data 
-                                     if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() >= month_ago])
-        
-        return RecognitionStatsResponse(
-            total_recognitions=total_recognitions,
-            successful_recognitions=successful_recognitions,
-            success_rate=success_rate,
-            average_confidence=average_confidence,
-            average_processing_time=average_processing_time,
-            recognitions_today=recognitions_today,
-            recognitions_this_week=recognitions_this_week,
-            recognitions_this_month=recognitions_this_month
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to get recognition stats: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve recognition statistics"
-        )
+            return matches
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na busca otimizada: {e}")
+            return []
+    
+    def _cache_embedding(self, image_hash: str, embedding: np.ndarray):
+        """Cache LRU para embeddings"""
+        try:
+            if len(self.embedding_cache) >= self.max_cache_size:
+                # Remove mais antigo (FIFO simples)
+                oldest_key = next(iter(self.embedding_cache))
+                del self.embedding_cache[oldest_key]
+            
+            self.embedding_cache[image_hash] = embedding
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro no cache: {e}")
+    
+    async def _get_person_batch(self, person_id: str, db_client) -> Dict:
+        """Busca em lote otimizada no banco"""
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                self.io_executor,
+                lambda: db_client.table("persons").select("*").eq("id", person_id).execute()
+            )
+            
+            if result.data:
+                return result.data[0]
+            
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na busca do banco: {e}")
+            return {}
+    
+    def __del__(self):
+        """Cleanup otimizado"""
+        if hasattr(self, 'io_executor'):
+            self.io_executor.shutdown(wait=False)
+        if hasattr(self, 'cpu_executor'):
+            self.cpu_executor.shutdown(wait=False)
 
+# Instância global otimizada
+optimized_face_service = OptimizedFaceRecognitionService()
 
-@router.post("/upload-real")
-async def upload_real_recognition(
-    image: UploadFile = File(...),
-    current_user=Depends(get_current_user)
-):
-    """Reconhecimento real usando Pinecone"""
-    try:
-        # Validar arquivo
-        if not image.content_type.startswith('image/'):
-            raise HTTPException(400, "Arquivo deve ser uma imagem")
-        
-        # Ler dados da imagem
-        image_data = await image.read()
-        
-        # Processar reconhecimento
-        result = await face_recognition_service.recognize_face_with_pinecone(image_data)
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(500, f"Erro no reconhecimento: {str(e)}")
+def get_face_recognition_service():
+    return optimized_face_service

@@ -1,4 +1,4 @@
-# ATUALIZAR: backend/requirements.txt
+# API Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
@@ -9,10 +9,10 @@ python-dotenv==1.0.0
 pydantic==2.4.2
 pydantic-settings==2.0.3
 
-# Machine Learning
+# Face Recognition 
 deepface==0.0.79
-opencv-python==4.8.1.78
 tensorflow==2.15.0
+opencv-python==4.8.1.78
 numpy==1.24.3
 Pillow==10.1.0
 
@@ -21,9 +21,11 @@ pinecone-client==2.2.4
 
 # Database
 supabase==2.3.4
+psycopg2-binary==2.9.7
 
-# HTTP Client
+# Utils
 httpx==0.25.1
+python-dateutil==2.8.2
 
 # Development
 pytest==7.4.3

@@ -1,50 +1,58 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import List, Optional
 import os
 
 class Settings(BaseSettings):
-    # API
-    SECRET_KEY: str = "face-recognition-pro-secret-key-change-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Database (Supabase)
+    supabase_url: str = "http://localhost:8000"
+    supabase_key: str = "mock_key"
+    supabase_service_key: str = "mock_service_key"
+    supabase_password: Optional[str] = None  # ADICIONAR ESTE CAMPO
+    database_url: Optional[str] = None       # ADICIONAR ESTE CAMPO
     
-    # Supabase
-    SUPABASE_URL: str = "https://qfyjpgctgsmdiyjfviup.supabase.co"
-    SUPABASE_KEY: str 
-    SUPABASE_PASSWORD: str = "-7cSE_bzsJ@Yqzj"
+    # Vector Database (Pinecone)
+    pinecone_api_key: str = "mock_pinecone_key"
+    pinecone_environment: str = "us-east1-gcp"
+    pinecone_index_name: str = "face-recognition-embeddings"
     
-    # Database
-    DATABASE_URL: str = "postgresql://postgres:-7cSE_bzsJ@Yqzj@db.qfyjpgctgsmdiyjfviup.supabase.co:5432/postgres"
-    
-    # Vector Database - Pinecone
-    PINECONE_API_KEY: str = "pcsk_5eva3w_6FfdhdZLaGj218QtXrjsUAiVofh7gJhzPYQtDuGZeKkv8soP9BSXXVuMeSbSawS"
-    PINECONE_ENVIRONMENT: str = "us-east1-gcp"
-    PINECONE_INDEX_NAME: str = "face-embeddings"
+    # Security
+    secret_key: str = "face-recognition-pro-secret-key-change-in-production"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
     
     # Face Recognition
-    FACE_RECOGNITION_MODEL: str = "Facenet512"
-    FACE_DETECTION_BACKEND: str = "opencv"
-    CONFIDENCE_THRESHOLD: float = 0.6
+    face_recognition_model: str = "Facenet512"
+    face_detection_backend: str = "opencv"
+    similarity_threshold: float = 0.6
+    confidence_threshold: float = 0.6        # ADICIONAR ESTE CAMPO
     
-    # File Upload
-    MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
-    UPLOAD_DIR: str = "uploads"
-    ALLOWED_EXTENSIONS: set = {".jpg", ".jpeg", ".png", ".bmp"}
+    # Upload
+    max_file_size: int = 10485760  # 10MB
+    allowed_extensions: List[str] = ["jpg", "jpeg", "png", "webp", "bmp"]
+    upload_path: str = "./uploads"
     
-    # Development
-    DEBUG: bool = True
+    # API
+    debug: bool = True
+    host: str = "0.0.0.0"
+    port: int = 8000
     
     class Config:
         env_file = ".env"
-        case_sensitive = True
+        case_sensitive = False
+        # PERMITIR CAMPOS EXTRAS
+        extra = "allow"  # Importante: permite campos extras
 
-# Instância global das configurações
+# Instância global
 settings = Settings()
 
-# Criar diretório de uploads
-if not os.path.exists(settings.UPLOAD_DIR):
+def ensure_upload_directory():
+    """Garantir que o diretório de uploads existe"""
     try:
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-        print(f"✅ Diretório {settings.UPLOAD_DIR} criado")
+        if not os.path.exists(settings.upload_path):
+            os.makedirs(settings.upload_path, exist_ok=True)
+            print(f"📁 Diretório criado: {settings.upload_path}")
     except Exception as e:
-        print(f"⚠️ Aviso: Erro ao criar diretório {settings.UPLOAD_DIR}: {e}")
+        print(f"⚠️ Aviso: {e}")
+
+# Criar diretório na importação (de forma segura)
+ensure_upload_directory()

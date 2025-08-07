@@ -1,403 +1,397 @@
-import os
-import time
-import logging
-from typing import List, Dict, Optional, Tuple
+import cv2
 import numpy as np
 from deepface import DeepFace
-import cv2
-from app.config import settings
-from app.utils.image_utils import (
-    base64_to_cv2, enhance_image_quality, calculate_image_quality_score,
-    resize_image, crop_face_region
-)
-from app.core.exceptions import (
-    NoFaceDetectedException, MultipleFacesException, 
-    InvalidImageException, FaceRecognitionException
-)
-from PIL import Image
+import logging
 import io
-from .vector_database import vector_db
+from PIL import Image
+import base64
+from typing import Optional, List, Dict, Tuple, Union
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import uuid
+import tempfile
+import os
 
+# Busca o Usuario requisitado
 logger = logging.getLogger(__name__)
-
 
 class FaceRecognitionService:
     def __init__(self):
-        self.model_name = "Facenet512"  # 512-dimensional embeddings
-        self.detector_backend = "opencv"
-        self.distance_metric = "cosine"
+        self.model_name = "Facenet512" 
+        self.detector_backend = "opencv"  
         self.confidence_threshold = 0.6
+        self.executor = ThreadPoolExecutor(max_workers=4)
         
-    def _initialize_models(self):
-        """Initialize and warm up DeepFace models."""
+        # Configurações do DeepFace
+        self.deepface_models = {
+            "Facenet512": 512,  
+            "ArcFace": 512,
+            "Facenet": 128,
+            "VGG-Face": 2622
+        }
+        
+        logger.info(f"🤖 FaceRecognitionService inicializado com modelo {self.model_name}")
+        
+    async def extract_embedding(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Extrair embedding de uma imagem usando DeepFace"""
         try:
-            logger.info(f"Initializing DeepFace with model: {self.model_name}")
-            
-            # Create a dummy image to warm up the models
-            dummy_img = np.ones((224, 224, 3), dtype=np.uint8) * 128
-            
-            # Warm up face detection
-            try:
-                DeepFace.extract_faces(
-                    img_path=dummy_img,
-                    detector_backend=self.detector_backend,
-                    enforce_detection=False
-                )
-                logger.info("Face detection model warmed up successfully")
-            except Exception as e:
-                logger.warning(f"Face detection warmup failed: {e}")
-            
-            # Warm up face recognition
-            try:
-                DeepFace.represent(
-                    img_path=dummy_img,
-                    model_name=self.model_name,
-                    detector_backend=self.detector_backend,
-                    enforce_detection=False
-                )
-                logger.info("Face recognition model warmed up successfully")
-            except Exception as e:
-                logger.warning(f"Face recognition warmup failed: {e}")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize models: {e}")
-            raise FaceRecognitionException(f"Model initialization failed: {str(e)}")
-    
-    def detect_faces(self, image: np.ndarray) -> List[Dict]:
-        """Detect faces in image and return face regions."""
-        try:
-            # Extract faces using DeepFace
-            faces = DeepFace.extract_faces(
-                img_path=image,
-                detector_backend=self.detector_backend,
-                enforce_detection=False,
-                align=True
+            # Usar executor para não bloquear event loop
+            loop = asyncio.get_event_loop()
+            embedding = await loop.run_in_executor(
+                self.executor,
+                self._extract_embedding_sync,
+                image_data
             )
-            
-            if not faces:
-                raise NoFaceDetectedException()
-            
-            # Get face regions for cropping
-            face_objs = DeepFace.analyze(
-                img_path=image,
-                actions=['age'],  # Minimal action to get face regions
-                detector_backend=self.detector_backend,
-                enforce_detection=False
-            )
-            
-            detected_faces = []
-            for i, face_obj in enumerate(face_objs):
-                face_region = face_obj.get('region', {})
-                if face_region:
-                    detected_faces.append({
-                        'index': i,
-                        'region': face_region,
-                        'face_image': faces[i] if i < len(faces) else None
-                    })
-            
-            return detected_faces
-            
-        except NoFaceDetectedException:
-            raise
-        except Exception as e:
-            logger.error(f"Face detection failed: {e}")
-            raise FaceRecognitionException(f"Face detection failed: {str(e)}")
-    
-    def extract_embedding(self, image: np.ndarray, face_region: Optional[Dict] = None) -> np.ndarray:
-        """Extract face embedding from image."""
-        try:
-            start_time = time.time()
-            
-            # Enhance image quality
-            enhanced_image = enhance_image_quality(image)
-            
-            # Crop face region if provided
-            if face_region:
-                enhanced_image = crop_face_region(enhanced_image, face_region)
-            
-            # Resize image for optimal processing
-            enhanced_image = resize_image(enhanced_image, (400, 400))
-            
-            # Extract embedding using DeepFace
-            embedding_result = DeepFace.represent(
-                img_path=enhanced_image,
-                model_name=self.model_name,
-                detector_backend=self.detector_backend,
-                enforce_detection=False
-            )
-            
-            if not embedding_result:
-                raise FaceRecognitionException("Failed to extract face embedding")
-            
-            # Get the first embedding
-            embedding = np.array(embedding_result[0]['embedding'], dtype=np.float32)
-            
-            processing_time = time.time() - start_time
-            logger.info(f"Embedding extracted in {processing_time:.3f}s")
             
             return embedding
             
         except Exception as e:
-            logger.error(f"Embedding extraction failed: {e}")
-            raise FaceRecognitionException(f"Embedding extraction failed: {str(e)}")
+            logger.error(f"❌ Erro ao extrair embedding: {e}")
+            return None
     
-    def extract_multiple_embeddings(self, image: np.ndarray) -> List[Dict]:
-        """Extract embeddings for all faces in image."""
+    def _extract_embedding_sync(self, image_data: bytes) -> Optional[np.ndarray]:
+        """Extrair embedding de forma síncrona usando DeepFace"""
+        temp_file = None
         try:
-            # Detect all faces
-            detected_faces = self.detect_faces(image)
+            # Converter bytes para imagem e salvar temporariamente
+            image = Image.open(io.BytesIO(image_data))
             
-            if len(detected_faces) == 0:
-                raise NoFaceDetectedException()
+            # Converter para RGB se necessário
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             
-            embeddings = []
-            for face_data in detected_faces:
-                try:
-                    embedding = self.extract_embedding(image, face_data['region'])
-                    quality_score = calculate_image_quality_score(image)
-                    
-                    embeddings.append({
-                        'embedding': embedding,
-                        'region': face_data['region'],
-                        'quality_score': quality_score
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to extract embedding for face: {e}")
-                    continue
+            # Salvar temporariamente (DeepFace precisa de arquivo)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                image.save(temp_file.name, 'JPEG')
+                temp_file_path = temp_file.name
             
-            if not embeddings:
-                raise FaceRecognitionException("No valid embeddings extracted")
-            
-            return embeddings
-            
-        except (NoFaceDetectedException, FaceRecognitionException):
-            raise
-        except Exception as e:
-            logger.error(f"Multiple embedding extraction failed: {e}")
-            raise FaceRecognitionException(f"Multiple embedding extraction failed: {str(e)}")
-    
-    def calculate_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """Calculate cosine similarity between two embeddings."""
-        try:
-            # Normalize embeddings
-            norm1 = np.linalg.norm(embedding1)
-            norm2 = np.linalg.norm(embedding2)
-            
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-            
-            # Calculate cosine similarity
-            similarity = np.dot(embedding1, embedding2) / (norm1 * norm2)
-            
-            # Convert to distance and then to similarity score (0-1)
-            distance = 1 - similarity
-            confidence = max(0, 1 - distance)
-            
-            return float(confidence)
-            
-        except Exception as e:
-            logger.error(f"Similarity calculation failed: {e}")
-            return 0.0
-    
-    def verify_faces(self, image1: np.ndarray, image2: np.ndarray) -> Dict:
-        """Verify if two images contain the same person."""
-        try:
-            start_time = time.time()
-            
-            # Extract embeddings
-            embedding1 = self.extract_embedding(image1)
-            embedding2 = self.extract_embedding(image2)
-            
-            # Calculate similarity
-            similarity = self.calculate_similarity(embedding1, embedding2)
-            
-            # Determine if it's a match
-            is_match = similarity >= self.similarity_threshold
-            
-            processing_time = time.time() - start_time
-            
-            return {
-                'verified': is_match,
-                'confidence': similarity,
-                'threshold': self.similarity_threshold,
-                'processing_time': processing_time
-            }
-            
-        except Exception as e:
-            logger.error(f"Face verification failed: {e}")
-            raise FaceRecognitionException(f"Face verification failed: {str(e)}")
-    
-    def process_image_for_recognition(self, base64_image: str) -> Tuple[np.ndarray, List[Dict]]:
-        """Process base64 image for face recognition."""
-        try:
-            # Convert base64 to OpenCV image
-            cv2_image = base64_to_cv2(base64_image)
-            
-            # Validate image quality
-            quality_score = calculate_image_quality_score(cv2_image)
-            if quality_score < 0.3:
-                logger.warning(f"Low image quality detected: {quality_score}")
-            
-            # Extract embeddings for all faces
-            embeddings_data = self.extract_multiple_embeddings(cv2_image)
-            
-            return cv2_image, embeddings_data
-            
-        except Exception as e:
-            logger.error(f"Image processing failed: {e}")
-            raise
-    
-    def get_model_info(self) -> Dict:
-        """Get information about current model configuration."""
-        return {
-            'model_name': self.model_name,
-            'detector_backend': self.detector_backend,
-            'similarity_threshold': self.similarity_threshold,
-            'embedding_size': self._get_embedding_size()
-        }
-    
-    def _get_embedding_size(self) -> int:
-        """Get embedding size for current model."""
-        embedding_sizes = {
-            'VGG-Face': 2622,
-            'Facenet': 128,
-            'Facenet512': 512,
-            'OpenFace': 128,
-            'DeepFace': 4096,
-            'DeepID': 160,
-            'ArcFace': 512,
-            'Dlib': 128,
-            'SFace': 128
-        }
-        return embedding_sizes.get(self.model_name, 512)
-    
-    async def extract_embedding(self, image_data: bytes) -> Optional[np.ndarray]:
-        """Extrair embedding facial de uma imagem"""
-        try:
-            # Converter bytes para imagem
-            pil_image = Image.open(io.BytesIO(image_data))
-            cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-            
-            # Validar qualidade da imagem
-            if not self._validate_image_quality(cv_image):
-                raise InvalidImageException("Imagem com qualidade insuficiente")
-            
-            # Extrair embedding usando DeepFace
+            # Extrair embedding com DeepFace
             try:
-                embeddings = DeepFace.represent(
-                    img_path=cv_image,
+                embedding_result = DeepFace.represent(
+                    img_path=temp_file_path,
                     model_name=self.model_name,
                     detector_backend=self.detector_backend,
-                    enforce_detection=True
+                    enforce_detection=True,  # Garantir que há uma face
+                    align=True  # Alinhar face para melhor precisão
                 )
                 
-                if embeddings and len(embeddings) > 0:
-                    return np.array(embeddings[0]["embedding"])
+                if embedding_result and len(embedding_result) > 0:
+                    embedding = embedding_result[0]["embedding"]
+                    embedding_array = np.array(embedding)
+                    
+                    logger.info(f"✅ Embedding extraído com sucesso - dimensão: {len(embedding)}")
+                    return embedding_array
                 else:
+                    logger.warning("⚠️ Nenhum embedding retornado pelo DeepFace")
                     return None
                     
             except ValueError as e:
                 if "Face could not be detected" in str(e):
+                    logger.warning("⚠️ Nenhuma face detectada na imagem")
                     return None
-                raise
-                
+                else:
+                    raise e
+                    
         except Exception as e:
-            logger.error(f"Erro ao extrair embedding: {str(e)}")
-            raise
+            logger.error(f"❌ Erro na extração síncrona: {e}")
+            return None
+            
+        finally:
+            # Limpar arquivo temporário
+            if temp_file and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
     
-    async def recognize_face(self, image_data: bytes, vector_service) -> Dict:
-        """Reconhecer face em uma imagem"""
+    async def detect_faces(self, image_data: bytes) -> Dict:
+        """Detectar faces na imagem usando DeepFace"""
         try:
-            # Extrair embedding
-            embedding = await self.extract_embedding(image_data)
-            
-            if embedding is None:
-                return {
-                    "recognized": False,
-                    "status": "no_face",
-                    "message": "Nenhum rosto detectado na imagem"
-                }
-            
-            # Buscar no banco vetorial
-            matches = vector_service.search_similar(
-                embedding=embedding.tolist(),
-                top_k=1,
-                score_threshold=self.confidence_threshold
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                self.executor,
+                self._detect_faces_sync,
+                image_data
             )
+            return result
             
-            if matches and len(matches) > 0:
-                best_match = matches[0]
-                confidence = 1 - best_match['score']  # Converter distance para confidence
-                
-                return {
-                    "recognized": True,
-                    "status": "success",
-                    "person_id": best_match['metadata']['person_id'],
-                    "person_name": best_match['metadata']['person_name'],
-                    "confidence": round(confidence, 3),
-                    "message": f"Pessoa reconhecida: {best_match['metadata']['person_name']}"
-                }
-            else:
-                return {
-                    "recognized": False,
-                    "status": "no_match",
-                    "message": "Pessoa não encontrada no banco de dados"
-                }
-                
         except Exception as e:
-            logger.error(f"Erro no reconhecimento: {str(e)}")
+            logger.error(f"❌ Erro na detecção de faces: {e}")
             return {
-                "recognized": False,
-                "status": "error",
-                "message": f"Erro interno: {str(e)}"
+                "faces_detected": 0,
+                "faces": [],
+                "error": str(e)
             }
     
-    async def recognize_face_with_pinecone(self, image_data: bytes) -> Dict:
-        """Reconhecer face usando Pinecone"""
+    def _detect_faces_sync(self, image_data: bytes) -> Dict:
+        """Detectar faces de forma síncrona"""
+        temp_file = None
         try:
-            # Extrair embedding
+            # Salvar imagem temporariamente
+            image = Image.open(io.BytesIO(image_data))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
+                image.save(temp_file.name, 'JPEG')
+                temp_file_path = temp_file.name
+            
+            # Usar DeepFace para detectar faces
+            try:
+                faces = DeepFace.extract_faces(
+                    img_path=temp_file_path,
+                    detector_backend=self.detector_backend,
+                    enforce_detection=False,  # Não dar erro se não encontrar
+                    align=True
+                )
+                
+                face_info = []
+                for i, face in enumerate(faces):
+                    # face é um numpy array da face extraída
+                    height, width = face.shape[:2]
+                    area = height * width
+                    
+                    face_info.append({
+                        "face_id": i,
+                        "width": width,
+                        "height": height,
+                        "area": area,
+                        "quality": "good" if area > 5000 else "low"
+                    })
+                
+                return {
+                    "faces_detected": len(faces),
+                    "faces": face_info,
+                    "message": f"{len(faces)} face(s) detectada(s)"
+                }
+                
+            except Exception as e:
+                if "Face could not be detected" in str(e):
+                    return {
+                        "faces_detected": 0,
+                        "faces": [],
+                        "message": "Nenhuma face detectada"
+                    }
+                else:
+                    raise e
+                    
+        except Exception as e:
+            logger.error(f"❌ Erro na detecção síncrona: {e}")
+            return {
+                "faces_detected": 0,
+                "faces": [],
+                "error": str(e)
+            }
+        finally:
+            # Limpar arquivo temporário
+            if temp_file and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+    
+    async def recognize_face_with_pinecone(self, image_data: bytes, vector_db, db_client) -> Dict:
+        """Reconhecer face usando Pinecone e DeepFace"""
+        try:
+            start_time = asyncio.get_event_loop().time()
+            
+            # Extrair embedding da imagem
+            logger.info("🔍 Extraindo embedding da imagem...")
             embedding = await self.extract_embedding(image_data)
             
             if embedding is None:
                 return {
-                    "recognized": False,
                     "status": "no_face",
-                    "message": "Nenhum rosto detectado na imagem"
+                    "message": "Nenhuma face detectada na imagem",
+                    "confidence": 0.0,
+                    "person_id": None,
+                    "person_name": None,
+                    "processing_time": round(asyncio.get_event_loop().time() - start_time, 3)
                 }
             
             # Buscar no Pinecone
-            matches = vector_db.search_similar(
-                embedding=embedding.tolist(),
-                top_k=1,
-                score_threshold=self.confidence_threshold
+            logger.info("🔍 Buscando faces similares no Pinecone...")
+            matches = vector_db.search_similar_faces(
+                embedding.tolist(),
+                top_k=5,
+                threshold=self.confidence_threshold
             )
             
-            if matches and len(matches) > 0:
-                best_match = matches[0]
-                confidence = best_match['confidence']
-                
+            processing_time = asyncio.get_event_loop().time() - start_time
+            
+            if not matches:
+                logger.info("❌ Nenhuma correspondência encontrada")
                 return {
-                    "recognized": True,
-                    "status": "success",
-                    "person_id": best_match['metadata']['person_id'],
-                    "person_name": best_match['metadata']['person_name'],
-                    "confidence": round(confidence, 3),
-                    "message": f"Pessoa reconhecida: {best_match['metadata']['person_name']}"
-                }
-            else:
-                return {
-                    "recognized": False,
                     "status": "no_match",
-                    "message": "Pessoa não encontrada no banco de dados"
+                    "message": "Pessoa não reconhecida no sistema",
+                    "confidence": 0.0,
+                    "person_id": None,
+                    "person_name": None,
+                    "processing_time": round(processing_time, 3),
+                    "threshold_used": self.confidence_threshold
                 }
+            
+            # Pegar melhor match
+            best_match = matches[0]
+            person_id = best_match["person_id"]
+            confidence = best_match["similarity"]
+            
+            logger.info(f"✅ Melhor match: {person_id} com confiança {confidence:.3f}")
+            
+            # Buscar dados da pessoa no Supabase
+            try:
+                logger.info(f"🔍 Buscando dados da pessoa {person_id} no banco...")
+                person_result = db_client.table("persons").select("*").eq("id", person_id).execute()
                 
-        except Exception as e:
-            logger.error(f"Erro no reconhecimento com Pinecone: {str(e)}")
+                if person_result.data:
+                    person = person_result.data[0]
+                    
+                    # Atualizar contador de reconhecimento
+                    try:
+                        new_count = person.get("recognition_count", 0) + 1
+                        db_client.table("persons").update({
+                            "recognition_count": new_count,
+                            "last_recognition": "now()"
+                        }).eq("id", person_id).execute()
+                        logger.info(f"✅ Contador atualizado para {new_count}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erro ao atualizar contador: {e}")
+                    
+                    return {
+                        "status": "success",
+                        "message": f"Pessoa reconhecida: {person['name']}",
+                        "confidence": round(confidence, 3),
+                        "person_id": person_id,
+                        "person_name": person["name"],
+                        "person_data": {
+                            "name": person["name"],
+                            "department": person.get("department"),
+                            "position": person.get("position"),
+                            "email": person.get("email"),
+                            "recognition_count": person.get("recognition_count", 0) + 1
+                        },
+                        "processing_time": round(processing_time, 3),
+                        "matches_found": len(matches),
+                        "all_matches": matches[:3]  # Top 3 matches para debug
+                    }
+                else:
+                    logger.warning(f"⚠️ Pessoa {person_id} encontrada no Pinecone mas não no banco")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro ao buscar pessoa no banco: {e}")
+            
+            # Fallback se não encontrar no banco
             return {
-                "recognized": False,
-                "status": "error",
-                "message": f"Erro interno: {str(e)}"
+                "status": "partial_success", 
+                "message": f"Pessoa reconhecida (ID: {person_id}) mas dados não encontrados",
+                "confidence": round(confidence, 3),
+                "person_id": person_id,
+                "person_name": f"Pessoa {person_id[:8]}",
+                "processing_time": round(processing_time, 3),
+                "matches_found": len(matches)
             }
+            
+        except Exception as e:
+            logger.error(f"❌ Erro no reconhecimento: {e}")
+            processing_time = asyncio.get_event_loop().time() - start_time if 'start_time' in locals() else 0
+            return {
+                "status": "error",
+                "message": f"Erro interno: {str(e)}",
+                "confidence": 0.0,
+                "person_id": None,
+                "person_name": None,
+                "processing_time": round(processing_time, 3),
+                "error_details": str(e)
+            }
+    
+    async def validate_face_image(self, image_data: bytes) -> Dict:
+        """Validar se imagem contém face de qualidade para cadastro"""
+        try:
+            logger.info("🔍 Validando imagem para cadastro...")
+            
+            # Detectar faces
+            face_detection = await self.detect_faces(image_data)
+            
+            faces_count = face_detection.get("faces_detected", 0)
+            
+            if faces_count == 0:
+                return {
+                    "valid": False,
+                    "message": "Nenhuma face detectada na imagem. Certifique-se de que há uma pessoa visível.",
+                    "face_count": 0,
+                    "recommendation": "Tire uma foto com boa iluminação mostrando claramente o rosto."
+                }
+            
+            if faces_count > 1:
+                return {
+                    "valid": False,
+                    "message": f"Múltiplas faces detectadas ({faces_count}). Use uma imagem com apenas uma pessoa.",
+                    "face_count": faces_count,
+                    "recommendation": "Tire uma nova foto com apenas uma pessoa na imagem."
+                }
+            
+            # Avaliar qualidade da face
+            face_info = face_detection.get("faces", [{}])[0]
+            face_area = face_info.get("area", 0)
+            face_quality = face_info.get("quality", "unknown")
+            
+            if face_quality == "low" or face_area < 5000:
+                return {
+                    "valid": False,
+                    "message": "Qualidade da face muito baixa para cadastro confiável.",
+                    "face_count": 1,
+                    "face_quality": face_quality,
+                    "face_area": face_area,
+                    "recommendation": "Aproxime-se mais da câmera ou melhore a iluminação."
+                }
+            
+            # Tentar extrair embedding para garantir que funciona
+            embedding = await self.extract_embedding(image_data)
+            
+            if embedding is None:
+                return {
+                    "valid": False,
+                    "message": "Não foi possível processar a face detectada.",
+                    "face_count": 1,
+                    "recommendation": "Tente uma imagem com melhor qualidade ou iluminação."
+                }
+            
+            return {
+                "valid": True,
+                "message": "Imagem válida para cadastro! Face de boa qualidade detectada.",
+                "face_count": 1,
+                "face_quality": face_quality,
+                "face_area": face_area,
+                "embedding_dimension": len(embedding),
+                "recommendation": "Imagem aprovada para cadastro."
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na validação: {e}")
+            return {
+                "valid": False,
+                "message": f"Erro ao processar imagem: {str(e)}",
+                "face_count": 0,
+                "error": str(e)
+            }
+    
+    def get_model_info(self) -> Dict:
+        """Obter informações do modelo atual"""
+        return {
+            "model_name": self.model_name,
+            "detector_backend": self.detector_backend,
+            "embedding_dimension": self.deepface_models.get(self.model_name, 512),
+            "confidence_threshold": self.confidence_threshold,
+            "available_models": list(self.deepface_models.keys())
+        }
+    
+    def __del__(self):
+        """Cleanup do executor"""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
 
 # Instância global
 face_recognition_service = FaceRecognitionService()
+
+def get_face_recognition_service() -> FaceRecognitionService:
+    return face_recognition_service
