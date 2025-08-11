@@ -15,7 +15,7 @@ class DatabaseManager:
         try:
             self.supabase = create_client(
                 settings.supabase_url,
-                settings.supabase_service_key
+                settings.supabase_key
             )
             logger.info("Connected to Supabase successfully")
         except Exception as e:
@@ -27,6 +27,16 @@ class DatabaseManager:
         if not self.supabase:
             self.connect()
         return self.supabase
+    
+    async def health_check(self) -> bool:
+        """Check database connection health."""
+        try:
+            # Perform a simple query to check connection
+            result = self.supabase.table("users").select("id").limit(1).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            return False
 
 
 # Global database instance

@@ -22,7 +22,7 @@ class FaceRecognitionService:
     def __init__(self):
         self.model_name = settings.face_recognition_model
         self.detector_backend = settings.face_detection_backend
-        self.similarity_threshold = settings.similarity_threshold
+        self.similarity_threshold = settings.confidence_threshold
         self._initialize_models()
     
     def _initialize_models(self):

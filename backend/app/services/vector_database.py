@@ -89,7 +89,7 @@ class VectorDatabaseService:
         """Search for similar faces in vector database."""
         try:
             if threshold is None:
-                threshold = settings.similarity_threshold
+                threshold = settings.confidence_threshold
             
             # Query vector database
             query_response = self.index.query(

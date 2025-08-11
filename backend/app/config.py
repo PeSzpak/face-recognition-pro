@@ -5,14 +5,15 @@ import os
 
 class Settings(BaseSettings):
     # Database
+    database_url: str
     supabase_url: str
     supabase_key: str
-    supabase_service_key: str
+    supabase_password: str
     
     # Vector Database
     pinecone_api_key: str
     pinecone_environment: str
-    pinecone_index_name: str = "face-recognition-embeddings"
+    pinecone_index_name: str = "face-embeddings"
     
     # Security
     secret_key: str
@@ -22,11 +23,11 @@ class Settings(BaseSettings):
     # Face Recognition
     face_recognition_model: str = "Facenet512"
     face_detection_backend: str = "opencv"
-    similarity_threshold: float = 0.6
+    confidence_threshold: float = 0.6
     
     # Upload
     max_file_size: int = 10485760  # 10MB
-    allowed_extensions: List[str] = ["jpg", "jpeg", "png"]
+    allowed_extensions: List[str] = ["jpg", "jpeg", "png", "webp", "bmp"]
     upload_path: str = "./uploads"
     
     # API
