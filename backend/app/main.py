@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 from app.config import settings
-from app.api import auth, persons, recognition, dashboard
+from app.api import auth, persons, recognition, dashboard, analytics, face_auth
 from app.core.exceptions import (
     FaceRecognitionException,
     PersonNotFoundException,
@@ -92,9 +92,11 @@ async def authentication_exception_handler(request, exc):
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
+app.include_router(face_auth.router, prefix="/api/auth", tags=["face-authentication"])
 app.include_router(persons.router, prefix="/api/persons", tags=["persons"])
 app.include_router(recognition.router, prefix="/api/recognition", tags=["recognition"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 # Health check
 @app.get("/health")

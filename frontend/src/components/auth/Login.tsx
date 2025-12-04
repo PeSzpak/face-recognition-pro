@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Shield, User, Lock, Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { authService } from '../../services/auth'
 import toast from 'react-hot-toast'
 
 const Login: React.FC = () => {
@@ -20,25 +21,29 @@ const Login: React.FC = () => {
     setLoading(true)
 
     try {
-      // Simular login
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Login usando API real
+      const response = await authService.login({
+        username: credentials.username,
+        password: credentials.password
+      })
       
-      if (credentials.username === 'admin' && credentials.password === 'admin') {
-        const user = {
-          id: '1',
-          name: 'Administrador MMTec',
-          username: 'admin',
-          role: 'admin'
-        }
-        
-        login(user, 'fake-token-123')
-        toast.success('Login realizado com sucesso!')
-        navigate('/dashboard')
-      } else {
-        toast.error('Credenciais inválidas!')
+      // Buscar dados do usuário após login
+      const currentUser = await authService.getCurrentUser()
+      
+      const user = {
+        id: currentUser.id,
+        name: currentUser.full_name || currentUser.username,
+        username: currentUser.username,
+        role: 'admin',
+        email: currentUser.email
       }
-    } catch (error) {
-      toast.error('Erro no login. Tente novamente.')
+      
+      login(user, response.access_token)
+      toast.success('Login realizado com sucesso!')
+      navigate('/dashboard')
+    } catch (error: any) {
+      console.error('Login error:', error)
+      toast.error(error.response?.data?.detail || 'Credenciais inválidas!')
     } finally {
       setLoading(false)
     }
@@ -151,8 +156,8 @@ const Login: React.FC = () => {
           </div>
 
           <div className="mt-8 text-center text-sm text-slate-500">
-            <p>Credenciais de teste:</p>
-            <p><strong>Usuário:</strong> admin | <strong>Senha:</strong> admin</p>
+            <p>Credenciais de acesso:</p>
+            <p><strong>Email:</strong> admin@facerecognition.pro | <strong>Senha:</strong> admin123</p>
           </div>
         </div>
       </div>

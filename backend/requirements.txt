@@ -1,18 +1,39 @@
+# FastAPI and dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
+python-dotenv==1.0.0
+aiofiles==23.2.1
+
+# Authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-sqlalchemy==2.0.23
-alembic==1.12.1
-supabase==2.1.0
-pinecone-client==2.2.4
-deepface==0.0.79
-opencv-python==4.8.1.78
-pillow==10.0.1
-numpy==1.24.3
-python-dotenv==1.0.0
+bcrypt==4.0.1
+
+# Database
+psycopg2-binary==2.9.9
+
+# Pydantic
 pydantic==2.5.0
-httpx>=0.24.0,<0.25.0
-aiofiles==23.2.1
 pydantic-settings==2.1.0
+email-validator==2.1.0
+
+# HTTP client
+httpx==0.25.0
+
+# Core ML dependencies - versions with pre-built ARM64 wheels
+numpy==1.24.3
+pillow==10.0.1
+
+# TensorFlow - using stable version with ARM64 support
+# Note: TensorFlow 2.15 includes Keras 2.15 internally, don't install keras separately
+tensorflow==2.15.0
+
+# Vector database
+qdrant-client==1.15.1
+
+# Computer Vision - headless for Docker
+opencv-python-headless==4.8.1.78
+
+# Face Recognition - will use the tensorflow we specified
+deepface==0.0.92

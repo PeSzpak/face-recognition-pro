@@ -17,13 +17,6 @@ interface PersonFormProps {
 interface FormData {
   name: string;
   description: string;
-  role: string;
-  department: string;
-  position: string;
-  employee_id: string;
-  email: string;
-  phone: string;
-  can_use_face_auth: boolean;
 }
 
 type CaptureMode = 'upload' | 'camera';
@@ -49,13 +42,6 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
     defaultValues: {
       name: person?.name || '',
       description: person?.description || '',
-      role: person?.role || 'user',
-      department: person?.department || '',
-      position: person?.position || '',
-      employee_id: person?.employee_id || '',
-      email: person?.email || '',
-      phone: person?.phone || '',
-      can_use_face_auth: person?.can_use_face_auth || false,
     }
   });
 
@@ -200,13 +186,6 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
         const updateData: PersonUpdateRequest = {
           name: data.name,
           description: data.description || undefined,
-          role: data.role || undefined,
-          department: data.department || undefined,
-          position: data.position || undefined,
-          employee_id: data.employee_id || undefined,
-          email: data.email || undefined,
-          phone: data.phone || undefined,
-          can_use_face_auth: data.can_use_face_auth,
         };
 
         await personsService.updatePerson(person.id, updateData);
@@ -232,13 +211,6 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
         const createData: PersonCreateRequest = {
           name: data.name,
           description: data.description || undefined,
-          role: data.role || 'user',
-          department: data.department || undefined,
-          position: data.position || undefined,
-          employee_id: data.employee_id || undefined,
-          email: data.email || undefined,
-          phone: data.phone || undefined,
-          can_use_face_auth: data.can_use_face_auth || false,
         };
 
         console.log('Creating person with data:', createData);
@@ -331,123 +303,6 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
                 {errors.description.message}
               </p>
             )}
-          </div>
-
-
-          {/* New Fields Section */}
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              Informações Adicionais
-            </h3>
-            
-            {/* Role and Department */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Hierarquia / Função
-                </label>
-                <select
-                  {...register('role')}
-                  className="input-mmtec"
-                  disabled={isLoading}
-                >
-                  <option value="user">Usuário</option>
-                  <option value="guest">Visitante</option>
-                  <option value="manager">Gerente</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Departamento
-                </label>
-                <input
-                  type="text"
-                  {...register('department')}
-                  className="input-mmtec"
-                  placeholder="Ex: TI, RH, Financeiro"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            {/* Position and Employee ID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Cargo
-                </label>
-                <input
-                  type="text"
-                  {...register('position')}
-                  className="input-mmtec"
-                  placeholder="Ex: Analista de Sistemas"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Matrícula
-                </label>
-                <input
-                  type="text"
-                  {...register('employee_id')}
-                  className="input-mmtec"
-                  placeholder="Ex: 12345"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            {/* Email and Phone */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  {...register('email')}
-                  className="input-mmtec"
-                  placeholder="email@exemplo.com"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Telefone
-                </label>
-                <input
-                  type="tel"
-                  {...register('phone')}
-                  className="input-mmtec"
-                  placeholder="(11) 99999-9999"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            {/* Face Auth Permission */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start">
-                <input
-                  type="checkbox"
-                  id="can_use_face_auth"
-                  {...register('can_use_face_auth')}
-                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  disabled={isLoading}
-                />
-                <label htmlFor="can_use_face_auth" className="ml-3 text-sm">
-                  <span className="font-medium text-slate-900">Permitir autenticação por Face ID</span>
-                  <p className="text-slate-600 mt-1">
-                    Esta pessoa poderá fazer login no sistema usando reconhecimento facial
-                  </p>
-                </label>
-              </div>
-            </div>
           </div>
 
           {/* Photo Capture Tabs */}

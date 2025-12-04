@@ -1,83 +1,92 @@
 import logging
 import time
-from typing import List, Dict, Optional, Tuple
+import uuid
+import hashlib
+from typing import List, Dict, Optional
 import numpy as np
-import pinecone
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from qdrant_client.http.models import Distance, VectorParams, PointStruct 
 from app.config import settings
 from app.core.exceptions import VectorDatabaseException
 
 logger = logging.getLogger(__name__)
 
 
-class VectorDatabaseService:
+class QdrantVectorService:
     def __init__(self):
-        self.index_name = settings.pinecone_index_name
+        self.collection_name = settings.qdrant_collection_name
         self.embedding_dimension = 512  # Facenet512 embedding size
-        self.index = None
-        self._initialize_pinecone()
+        self.client = None
+        self._initialize_qdrant()
     
-    def _initialize_pinecone(self):
-        """Initialize Pinecone connection and index."""
+    def _initialize_qdrant(self):
+        """Initialize Qdrant connection and collection."""
         try:
-            # Initialize Pinecone
-            pinecone.init(
-                api_key=settings.pinecone_api_key,
-                environment=settings.pinecone_environment
+            # Connect to Qdrant
+            self.client = QdrantClient(
+                host=settings.qdrant_host,
+                port=settings.qdrant_port
             )
             
-            # Check if index exists, create if not
-            if self.index_name not in pinecone.list_indexes():
-                logger.info(f"Creating Pinecone index: {self.index_name}")
-                pinecone.create_index(
-                    name=self.index_name,
-                    dimension=self.embedding_dimension,
-                    metric="cosine",
-                    pod_type="starter"  # Free tier
+            # Check if collection exists
+            collections = self.client.get_collections().collections
+            collection_names = [c.name for c in collections]
+            
+            if self.collection_name not in collection_names:
+                logger.info(f"Creating Qdrant collection: {self.collection_name}")
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(
+                        size=self.embedding_dimension,
+                        distance=Distance.COSINE
+                    )
                 )
-                # Wait for index to be ready
-                time.sleep(10)
             
-            # Connect to index
-            self.index = pinecone.Index(self.index_name)
-            
-            # Get index stats
-            stats = self.index.describe_index_stats()
-            logger.info(f"Connected to Pinecone index: {self.index_name}")
-            logger.info(f"Index stats: {stats}")
+            # Get collection info
+            collection_info = self.client.get_collection(self.collection_name)
+            logger.info(f"Connected to Qdrant collection: {self.collection_name}")
+            logger.info(f"Collection info: {collection_info}")
             
         except Exception as e:
-            logger.error(f"Failed to initialize Pinecone: {e}")
-            raise VectorDatabaseException(f"Pinecone initialization failed: {str(e)}")
+            logger.error(f"Failed to initialize Qdrant: {e}")
+            raise VectorDatabaseException(f"Qdrant initialization failed: {str(e)}")
     
     def upsert_person_embeddings(self, person_id: str, embeddings: List[np.ndarray], 
                                 metadata: Optional[Dict] = None) -> bool:
         """Upsert person embeddings to vector database."""
         try:
-            vectors = []
+            points = []
             base_metadata = metadata or {}
             
             for i, embedding in enumerate(embeddings):
-                vector_id = f"{person_id}_embedding_{i}"
-                vector_metadata = {
+                # Generate a valid UUID for Qdrant point ID
+                # Use person_id + index + timestamp to create unique UUID
+                unique_string = f"{person_id}_{i}_{int(time.time())}"
+                point_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, unique_string)
+                
+                point_metadata = {
                     **base_metadata,
                     "person_id": person_id,
                     "embedding_index": i,
                     "timestamp": time.time()
                 }
                 
-                vectors.append({
-                    "id": vector_id,
-                    "values": embedding.tolist(),
-                    "metadata": vector_metadata
-                })
+                points.append(
+                    PointStruct(
+                        id=str(point_uuid),  # UUID as string
+                        vector=embedding.tolist(),
+                        payload=point_metadata
+                    )
+                )
             
-            # Upsert vectors in batches
-            batch_size = 100
-            for i in range(0, len(vectors), batch_size):
-                batch = vectors[i:i + batch_size]
-                self.index.upsert(vectors=batch)
+            # Upsert points
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=points
+            )
             
-            logger.info(f"Upserted {len(vectors)} embeddings for person {person_id}")
+            logger.info(f"Upserted {len(points)} embeddings for person {person_id}")
             return True
             
         except Exception as e:
@@ -91,34 +100,27 @@ class VectorDatabaseService:
             if threshold is None:
                 threshold = settings.similarity_threshold
             
-            # Query vector database
-            query_response = self.index.query(
-                vector=query_embedding.tolist(),
-                top_k=top_k,
-                include_values=False,
-                include_metadata=True
+            # Search in Qdrant
+            search_result = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_embedding.tolist(),
+                limit=top_k,
+                score_threshold=threshold
             )
             
-            # Process results
-            matches = []
-            for match in query_response.matches:
-                similarity = match.score
-                
-                # Filter by threshold
-                if similarity >= threshold:
-                    matches.append({
-                        "id": match.id,
-                        "person_id": match.metadata.get("person_id"),
-                        "similarity": similarity,
-                        "metadata": match.metadata
-                    })
-            
-            # Group by person_id and get best match per person
+            # Process results and group by person_id
             person_matches = {}
-            for match in matches:
-                person_id = match["person_id"]
-                if person_id not in person_matches or match["similarity"] > person_matches[person_id]["similarity"]:
-                    person_matches[person_id] = match
+            for hit in search_result:
+                person_id = hit.payload.get("person_id")
+                similarity = hit.score
+                
+                if person_id not in person_matches or similarity > person_matches[person_id]["similarity"]:
+                    person_matches[person_id] = {
+                        "id": hit.id,
+                        "person_id": person_id,
+                        "similarity": similarity,
+                        "metadata": hit.payload
+                    }
             
             # Sort by similarity
             final_matches = sorted(person_matches.values(), key=lambda x: x["similarity"], reverse=True)
@@ -133,57 +135,46 @@ class VectorDatabaseService:
     def delete_person_embeddings(self, person_id: str) -> bool:
         """Delete all embeddings for a person."""
         try:
-            # Query all vectors for this person
-            query_response = self.index.query(
-                vector=[0.0] * self.embedding_dimension,  # Dummy vector
-                top_k=10000,  # Large number to get all
-                include_values=False,
-                include_metadata=True,
-                filter={"person_id": person_id}
+            # Delete by filter
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="person_id",
+                                match=models.MatchValue(value=person_id)
+                            )
+                        ]
+                    )
+                )
             )
             
-            # Extract vector IDs
-            vector_ids = [match.id for match in query_response.matches]
-            
-            if vector_ids:
-                # Delete vectors in batches
-                batch_size = 1000
-                for i in range(0, len(vector_ids), batch_size):
-                    batch = vector_ids[i:i + batch_size]
-                    self.index.delete(ids=batch)
-                
-                logger.info(f"Deleted {len(vector_ids)} embeddings for person {person_id}")
-            
+            logger.info(f"Deleted embeddings for person {person_id}")
             return True
             
         except Exception as e:
             logger.error(f"Failed to delete embeddings for person {person_id}: {e}")
             raise VectorDatabaseException(f"Failed to delete embeddings: {str(e)}")
     
-    def update_person_metadata(self, person_id: str, metadata_updates: Dict) -> bool:
-        """Update metadata for all embeddings of a person."""
-        try:
-            # This is a limitation of Pinecone - we need to fetch, update, and upsert
-            # For now, we'll skip this operation or implement it when needed
-            logger.warning("Metadata update not implemented for Pinecone")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to update metadata for person {person_id}: {e}")
-            return False
-    
     def get_person_embedding_count(self, person_id: str) -> int:
         """Get number of embeddings stored for a person."""
         try:
-            query_response = self.index.query(
-                vector=[0.0] * self.embedding_dimension,
-                top_k=10000,
-                include_values=False,
-                include_metadata=True,
-                filter={"person_id": person_id}
+            # Count by scrolling with filter
+            result = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="person_id",
+                            match=models.MatchValue(value=person_id)
+                        )
+                    ]
+                ),
+                limit=10000
             )
             
-            return len(query_response.matches)
+            return len(result[0])
             
         except Exception as e:
             logger.error(f"Failed to get embedding count for person {person_id}: {e}")
@@ -192,13 +183,13 @@ class VectorDatabaseService:
     def get_database_stats(self) -> Dict:
         """Get vector database statistics."""
         try:
-            stats = self.index.describe_index_stats()
+            collection_info = self.client.get_collection(self.collection_name)
             
             return {
-                "total_vectors": stats.total_vector_count,
-                "dimension": stats.dimension,
-                "index_fullness": stats.index_fullness,
-                "namespaces": stats.namespaces
+                "total_vectors": collection_info.points_count,
+                "dimension": self.embedding_dimension,
+                "collection_name": self.collection_name,
+                "status": collection_info.status
             }
             
         except Exception as e:
@@ -208,17 +199,20 @@ class VectorDatabaseService:
     def health_check(self) -> bool:
         """Check if vector database is healthy."""
         try:
-            stats = self.index.describe_index_stats()
-            return True
+            collection_info = self.client.get_collection(self.collection_name)
+            return collection_info.status == "green"
         except Exception as e:
             logger.error(f"Vector database health check failed: {e}")
             return False
 
 
 # Global vector database service instance
-vector_db_service = VectorDatabaseService()
+_vector_db_service: Optional[QdrantVectorService] = None
 
 
-def get_vector_database_service() -> VectorDatabaseService:
-    """Dependency to get vector database service."""
-    return vector_db_service
+def get_vector_database_service() -> QdrantVectorService:
+    """Dependency to get vector database service with lazy initialization."""
+    global _vector_db_service
+    if _vector_db_service is None:
+        _vector_db_service = QdrantVectorService()
+    return _vector_db_service

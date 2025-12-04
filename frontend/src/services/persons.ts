@@ -27,47 +27,53 @@ class PersonsService {
       params.append('search', search);
     }
 
-    const response = await api.get(`/persons?${params}`);
+    const response = await api.get(`/api/persons?${params}`);
     return response.data;
   }
 
   async getPersonById(id: string): Promise<Person> {
-    const response = await api.get(`/persons/${id}`);
+    const response = await api.get(`/api/persons/${id}`);
     return response.data;
   }
 
   async createPerson(data: PersonCreateRequest): Promise<Person> {
-    const response = await api.post('/persons', data);
+    const response = await api.post('/api/persons', data);
     return response.data;
   }
 
   async updatePerson(id: string, data: PersonUpdateRequest): Promise<Person> {
-    const response = await api.put(`/persons/${id}`, data);
+    const response = await api.put(`/api/persons/${id}`, data);
     return response.data;
   }
 
   async deletePerson(id: string): Promise<void> {
-    await api.delete(`/persons/${id}`);
+    await api.delete(`/api/persons/${id}`);
   }
 
   async addPersonPhotos(id: string, photos: string[]): Promise<void> {
     const formData = new FormData();
     
     // Convert base64 images to blobs and add to FormData
-    photos.forEach((photo, index) => {
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      
+      // Extract base64 data (remove data:image/jpeg;base64, prefix if present)
+      const base64Data = photo.includes(',') ? photo.split(',')[1] : photo;
+      
       // Convert base64 to blob
-      const byteCharacters = atob(photo.split(',')[1]);
+      const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      for (let j = 0; j < byteCharacters.length; j++) {
+        byteNumbers[j] = byteCharacters.charCodeAt(j);
       }
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'image/jpeg' });
       
-      formData.append('photos', blob, `photo_${index}.jpg`);
-    });
+      // Add to FormData with proper name
+      formData.append('photos', blob, `photo_${i}.jpg`);
+    }
 
-    await api.post(`/persons/${id}/photos`, formData, {
+    await api.post(`/api/persons/${id}/photos`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -75,11 +81,11 @@ class PersonsService {
   }
 
   async deletePersonPhoto(personId: string, photoId: string): Promise<void> {
-    await api.delete(`/persons/${personId}/photos/${photoId}`);
+    await api.delete(`/api/persons/${personId}/photos/${photoId}`);
   }
 
   async getPersonPhotos(id: string): Promise<string[]> {
-    const response = await api.get(`/persons/${id}/photos`);
+    const response = await api.get(`/api/persons/${id}/photos`);
     return response.data.photos || [];
   }
 
@@ -90,7 +96,7 @@ class PersonsService {
 
   async getPersonStats(personId: string): Promise<PersonStats> {
     try {
-      const response = await api.get(`/persons/${personId}/stats`);
+      const response = await api.get(`/api/persons/${personId}/stats`);
       const logs = response.data.logs || [];
       
       return {
@@ -111,7 +117,7 @@ class PersonsService {
   }
 
   async searchPersons(query: string): Promise<Person[]> {
-    const response = await api.get(`/persons/search?q=${encodeURIComponent(query)}`);
+    const response = await api.get(`/api/persons/search?q=${encodeURIComponent(query)}`);
     return response.data.persons || [];
   }
 }

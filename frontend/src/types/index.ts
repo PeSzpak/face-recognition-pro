@@ -33,17 +33,44 @@ export interface Person {
   photo_count: number;
   created_at: string;
   updated_at: string;
+  
+  // New fields for Face ID authentication
+  role?: string; // 'admin' | 'manager' | 'user' | 'guest'
+  department?: string;
+  position?: string;
+  employee_id?: string;
+  email?: string;
+  phone?: string;
+  can_use_face_auth?: boolean;
 }
 
 export interface PersonCreateRequest {
   name: string;
   description?: string;
+  
+  // New fields
+  role?: string;
+  department?: string;
+  position?: string;
+  employee_id?: string;
+  email?: string;
+  phone?: string;
+  can_use_face_auth?: boolean;
 }
 
 export interface PersonUpdateRequest {
   name?: string;
   description?: string;
   active?: boolean;
+  
+  // New fields
+  role?: string;
+  department?: string;
+  position?: string;
+  employee_id?: string;
+  email?: string;
+  phone?: string;
+  can_use_face_auth?: boolean;
 }
 
 export interface PersonListResponse {
@@ -251,3 +278,52 @@ export interface FaceIDResult {
   motion_history?: number[]
   face_quality?: 'high' | 'medium' | 'low'
 }
+
+// Face ID Authentication
+export interface FaceAuthRequest {
+  image_base64: string
+}
+
+export interface FaceAuthResponse {
+  access_token: string
+  token_type: string
+  auth_method: string
+  user: User
+  confidence: number
+  processing_time: number
+}
+
+export interface FaceAuthLog {
+  id: string
+  person_id?: string
+  person_name?: string
+  person_role?: string
+  confidence?: number
+  status: 'success' | 'failed' | 'denied' | 'no_face' | 'no_match'
+  ip_address?: string
+  processing_time?: number
+  error_message?: string
+  created_at: string
+}
+
+export interface FaceAuthStats {
+  total_attempts: number
+  successful_attempts: number
+  success_rate: number
+  denied_attempts: number
+  no_face_attempts: number
+  no_match_attempts: number
+  average_confidence: number
+  average_processing_time: number
+  unique_users: number
+}
+
+// Role Types
+export type PersonRole = 'admin' | 'manager' | 'user' | 'guest'
+
+export const PERSON_ROLES: { value: PersonRole; label: string }[] = [
+  { value: 'admin', label: 'Administrador' },
+  { value: 'manager', label: 'Gerente' },
+  { value: 'user', label: 'Usuário' },
+  { value: 'guest', label: 'Visitante' }
+]

@@ -1,14 +1,15 @@
+# Use Python 3.10 slim image
 FROM python:3.10-slim
 
-# Install system dependencies
+# Install system dependencies for OpenCV and face recognition
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
-    libgfortran5 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -21,11 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create uploads directory
-RUN mkdir -p uploads
+# Copy and set permissions for startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Ensure uploads directory exists (may already be copied)
+RUN mkdir -p uploads || true
 
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start application
+CMD ["/app/start.sh"]

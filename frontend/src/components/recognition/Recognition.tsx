@@ -15,17 +15,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import SimpleWebcam from './SimpleWebcam'
-
-interface RecognitionResult {
-  recognized: boolean
-  person_name?: string
-  person_id?: string
-  confidence?: number
-  status: 'success' | 'no_match' | 'no_face' | 'error' | 'spoofing_detected'
-  processing_time?: number
-  message?: string
-  liveness_score?: number
-}
+import { recognitionService } from '../../services/recognition'
+import { RecognitionResult } from '@/types'
 
 const Recognition: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -35,7 +26,7 @@ const Recognition: React.FC = () => {
   const [mode, setMode] = useState<'camera' | 'upload' | 'secure'>('camera')
   const [recentRecognitions, setRecentRecognitions] = useState<any[]>([])
 
-  // Processar imagem (unificado)
+  // Processar imagem usando API real
   const processImage = async (imageData: string | File) => {
     setLoading(true)
     setResult(null)
@@ -43,75 +34,55 @@ const Recognition: React.FC = () => {
     try {
       console.log('🔍 Processando imagem para reconhecimento...')
       
-      // Simular tempo de processamento de IA
-      await new Promise(resolve => setTimeout(resolve, 2500))
+      let apiResult: RecognitionResult
 
-      // Simular resultado mais realista (75% sucesso)
-      const success = Math.random() > 0.25
-      
-      let mockResult: RecognitionResult
-
-      if (success) {
-        const people = [
-          'João Silva', 'Maria Santos', 'Pedro Costa', 'Ana Oliveira',
-          'Carlos Ferreira', 'Lucia Mendoza', 'Fernando Alves', 'Camila Rocha'
-        ]
-        const person = people[Math.floor(Math.random() * people.length)]
-        const confidence = 0.82 + Math.random() * 0.17
-        
-        mockResult = {
-          recognized: true,
-          person_name: person,
-          person_id: `person_${Math.floor(Math.random() * 1000)}`,
-          confidence: confidence,
-          status: 'success',
-          processing_time: 1.8 + Math.random() * 1.2,
-          message: 'Pessoa identificada com sucesso!',
-          liveness_score: mode === 'secure' ? 0.95 + Math.random() * 0.05 : undefined
-        }
-        
-        toast.success(`✅ Reconhecido: ${person} (${(confidence * 100).toFixed(1)}%)`)
+      if (imageData instanceof File) {
+        // Upload de arquivo
+        apiResult = await recognitionService.identifyFace(imageData)
       } else {
-        const errorTypes = ['no_match', 'no_face', 'spoofing_detected'] as const
-        const errorType = errorTypes[Math.floor(Math.random() * errorTypes.length)]
-        
-        const messages = {
-          'no_match': 'Pessoa não cadastrada no sistema',
-          'no_face': 'Nenhum rosto detectado na imagem',
-          'spoofing_detected': 'Tentativa de spoofing detectada'
-        }
-        
-        mockResult = {
-          recognized: false,
-          status: errorType,
-          processing_time: 1.5,
-          message: messages[errorType],
-          liveness_score: mode === 'secure' ? Math.random() * 0.5 : undefined
-        }
-        
-        toast.error(`❌ ${mockResult.message}`)
+        // Base64 da webcam
+        apiResult = await recognitionService.identifyFaceFromBase64(imageData)
       }
 
-      setResult(mockResult)
+      // Mapear resposta da API
+      const mappedResult: RecognitionResult = {
+        recognized: apiResult.recognized || false,
+        person_name: apiResult.person_name,
+        person_id: apiResult.person_id,
+        confidence: apiResult.confidence,
+        status: apiResult.status,
+        processing_time: apiResult.processing_time,
+        message: apiResult.message
+      }
+
+      setResult(mappedResult)
       
+      // Mostrar feedback ao usuário
+      if (mappedResult.recognized && mappedResult.person_name) {
+        toast.success(`✅ Reconhecido: ${mappedResult.person_name} (${((mappedResult.confidence || 0) * 100).toFixed(1)}%)`)
+      } else {
+        toast.error(`❌ ${mappedResult.message || 'Não reconhecido'}`)
+      }
+
       // Adicionar aos reconhecimentos recentes
       const imageUrl = typeof imageData === 'string' ? imageData : URL.createObjectURL(imageData)
       const newRecognition = {
         id: Date.now(),
-        ...mockResult,
+        ...mappedResult,
         timestamp: new Date().toISOString(),
         image_url: imageUrl
       }
       
       setRecentRecognitions(prev => [newRecognition, ...prev.slice(0, 9)])
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro no processamento:', error)
-      toast.error('Erro interno no processamento')
+      const errorMessage = error.response?.data?.detail || error.message || 'Erro interno no processamento'
+      toast.error(errorMessage)
       setResult({
         recognized: false,
         status: 'error',
-        message: 'Erro interno do sistema'
+        message: errorMessage
       })
     } finally {
       setLoading(false)
@@ -414,8 +385,6 @@ const Recognition: React.FC = () => {
                 <div className="text-center">
                   {result.status === 'success' ? (
                     <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                  ) : result.status === 'spoofing_detected' ? (
-                    <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-3" />
                   ) : (
                     <XCircle className="h-12 w-12 text-red-500 mx-auto mb-3" />
                   )}
@@ -436,17 +405,6 @@ const Recognition: React.FC = () => {
                         <div className="text-xs text-blue-600">Tempo</div>
                       </div>
                     </div>
-                    
-                    {result.liveness_score !== undefined && (
-                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                        <div className="flex items-center justify-center space-x-2 text-purple-700">
-                          <Shield className="h-4 w-4" />
-                          <span className="text-sm font-medium">
-                            Liveness: {(result.liveness_score * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="text-center">
@@ -458,13 +416,11 @@ const Recognition: React.FC = () => {
                 <div className="text-center">
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
                     result.status === 'success' ? 'bg-green-100 text-green-800' :
-                    result.status === 'spoofing_detected' ? 'bg-yellow-100 text-yellow-800' :
                     'bg-red-100 text-red-800'
                   }`}>
                     {result.status === 'success' ? '✅ Identificado' :
                      result.status === 'no_match' ? '❌ Não Cadastrado' :
                      result.status === 'no_face' ? '👤 Sem Rosto' :
-                     result.status === 'spoofing_detected' ? '⚠️ Spoofing' :
                      '❌ Erro'}
                   </span>
                 </div>

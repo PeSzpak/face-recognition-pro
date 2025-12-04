@@ -41,13 +41,14 @@ async def identify_face(
             processing_time = time.time() - start_time
             
             # Log failed recognition
-            log_data = {
-                "person_id": None,
-                "confidence": 0.0,
-                "status": "no_face",
-                "processing_time": processing_time
-            }
-            db.table("recognition_logs").insert(log_data).execute()
+            db.execute_query(
+                """
+                INSERT INTO recognition_logs (person_id, confidence, status, processing_time)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (None, 0.0, "no_face", processing_time),
+                fetch=False
+            )
             
             return RecognitionResult(
                 person_id=None,
@@ -79,17 +80,21 @@ async def identify_face(
             confidence = best_match["similarity"]
             
             # Get person details from database
-            person_result = db.table("persons").select("*").eq("id", person_id).execute()
-            person_name = person_result.data[0]["name"] if person_result.data else "Unknown"
+            person_result = db.execute_query(
+                "SELECT id, name FROM persons WHERE id = %s",
+                (person_id,)
+            )
+            person_name = person_result[0]["name"] if person_result else "Unknown"
             
             # Log successful recognition
-            log_data = {
-                "person_id": person_id,
-                "confidence": confidence,
-                "status": "success",
-                "processing_time": processing_time
-            }
-            db.table("recognition_logs").insert(log_data).execute()
+            db.execute_query(
+                """
+                INSERT INTO recognition_logs (person_id, confidence, status, processing_time)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (person_id, confidence, "success", processing_time),
+                fetch=False
+            )
             
             logger.info(f"Face identified: {person_name} (confidence: {confidence:.3f})")
             
@@ -103,13 +108,14 @@ async def identify_face(
             )
         else:
             # No match found
-            log_data = {
-                "person_id": None,
-                "confidence": 0.0,
-                "status": "no_match",
-                "processing_time": processing_time
-            }
-            db.table("recognition_logs").insert(log_data).execute()
+            db.execute_query(
+                """
+                INSERT INTO recognition_logs (person_id, confidence, status, processing_time)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (None, 0.0, "no_match", processing_time),
+                fetch=False
+            )
             
             return RecognitionResult(
                 person_id=None,
@@ -140,21 +146,41 @@ async def get_recognition_logs(
 ):
     """Get recognition logs with pagination."""
     try:
-        query = db.table("recognition_logs").select("""
-            id, person_id, confidence, status, processing_time, created_at,
-            persons.name as person_name
-        """).join("persons", "recognition_logs.person_id", "persons.id", how="left")
+        # Build query
+        conditions = ["1=1"]
+        params = []
         
         if status_filter:
-            query = query.eq("status", status_filter)
+            conditions.append("rl.status = %s")
+            params.append(status_filter)
+        
+        where_clause = " AND ".join(conditions)
         
         # Apply pagination
         offset = (page - 1) * size
-        result = query.order("created_at", desc=True).range(offset, offset + size - 1).execute()
+        
+        query = f"""
+            SELECT 
+                rl.id, 
+                rl.person_id, 
+                rl.confidence, 
+                rl.status, 
+                rl.processing_time, 
+                rl.created_at,
+                p.name as person_name
+            FROM recognition_logs rl
+            LEFT JOIN persons p ON rl.person_id = p.id
+            WHERE {where_clause}
+            ORDER BY rl.created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        
+        params.extend([size, offset])
+        result = db.execute_query(query, tuple(params))
         
         logs = []
-        if result.data:
-            for log_data in result.data:
+        if result:
+            for log_data in result:
                 logs.append(RecognitionLogResponse(**log_data))
         
         return logs
@@ -175,9 +201,9 @@ async def get_recognition_stats(
     """Get recognition statistics."""
     try:
         # Get all recognition logs
-        all_logs = db.table("recognition_logs").select("*").execute()
+        all_logs = db.execute_query("SELECT * FROM recognition_logs ORDER BY created_at DESC")
         
-        if not all_logs.data:
+        if not all_logs:
             return RecognitionStatsResponse(
                 total_recognitions=0,
                 successful_recognitions=0,
@@ -189,7 +215,7 @@ async def get_recognition_stats(
                 recognitions_this_month=0
             )
         
-        logs_data = all_logs.data
+        logs_data = all_logs
         total_recognitions = len(logs_data)
         successful_logs = [log for log in logs_data if log["status"] == "success"]
         successful_recognitions = len(successful_logs)
@@ -206,11 +232,11 @@ async def get_recognition_stats(
         month_ago = today - timedelta(days=30)
         
         recognitions_today = len([log for log in logs_data 
-                                if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() == today])
+                                if log["created_at"].date() == today])
         recognitions_this_week = len([log for log in logs_data 
-                                    if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() >= week_ago])
+                                    if log["created_at"].date() >= week_ago])
         recognitions_this_month = len([log for log in logs_data 
-                                     if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() >= month_ago])
+                                     if log["created_at"].date() >= month_ago])
         
         return RecognitionStatsResponse(
             total_recognitions=total_recognitions,

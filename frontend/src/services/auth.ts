@@ -13,70 +13,36 @@ import { STORAGE_KEYS, API_ENDPOINTS } from '@/utils/constants'
 class AuthService {
   // Login
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    try {
-      const response = await apiService.post(API_ENDPOINTS.AUTH.LOGIN, credentials)
-      
-      if (response.data.access_token) {
-        this.setTokens(response.data.access_token, response.data.refresh_token)
-        this.setUser(response.data.user)
+    // FastAPI OAuth2 usa form-data, não JSON
+    const formData = new URLSearchParams()
+    formData.append('username', credentials.username)
+    formData.append('password', credentials.password)
+    
+    const response = await apiService.post(API_ENDPOINTS.AUTH.LOGIN, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
       }
+    })
+    
+    if (response.data.access_token) {
+      this.setTokens(response.data.access_token, response.data.refresh_token)
       
-      return response.data
-    } catch (error: any) {
-      // Se backend não estiver disponível, usar mock para demonstração
-      if (error.code === 'ERR_NETWORK') {
-        return this.mockLogin(credentials)
+      // Buscar dados do usuário após login
+      try {
+        const userResponse = await apiService.get(API_ENDPOINTS.AUTH.ME)
+        this.setUser(userResponse.data)
+      } catch (error) {
+        console.warn('Failed to fetch user data:', error)
       }
-      throw error
     }
-  }
-
-  // Mock login para demonstração
-  private mockLogin(credentials: LoginRequest): LoginResponse {
-    if (credentials.username === 'admin' && credentials.password === 'admin123') {
-      const mockResponse = {
-        access_token: 'mock-jwt-token-' + Date.now(),
-        refresh_token: 'mock-refresh-token-' + Date.now(),
-        token_type: 'Bearer',
-        expires_in: 3600,
-        user: {
-          id: '1',
-          username: credentials.username,
-          email: 'admin@facerecognition.com',
-          full_name: 'Administrador',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      }
-      
-      this.setTokens(mockResponse.access_token, mockResponse.refresh_token)
-      this.setUser(mockResponse.user)
-      
-      return mockResponse
-    } else {
-      throw new Error('Credenciais inválidas')
-    }
+    
+    return response.data
   }
 
   // Register
   async register(userData: RegisterRequest): Promise<User> {
-    try {
-      const response = await apiService.post(API_ENDPOINTS.AUTH.REGISTER, userData)
-      return response.data.user
-    } catch (error: any) {
-      if (error.code === 'ERR_NETWORK') {
-        // Mock register
-        return {
-          id: Date.now().toString(),
-          username: userData.username,
-          email: userData.email,
-          full_name: userData.full_name,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      }
-      throw error
-    }
+    const response = await apiService.post(API_ENDPOINTS.AUTH.REGISTER, userData)
+    return response.data.user
   }
 
   // Logout
@@ -112,19 +78,8 @@ class AuthService {
 
   // Get current user
   async getCurrentUser(): Promise<User> {
-    try {
-      const response = await apiService.get(API_ENDPOINTS.AUTH.ME)
-      return response.data
-    } catch (error: any) {
-      if (error.code === 'ERR_NETWORK') {
-        // Mock current user
-        const stored = localStorage.getItem(STORAGE_KEYS.USER_DATA)
-        if (stored) {
-          return JSON.parse(stored)
-        }
-      }
-      throw error
-    }
+    const response = await apiService.get(API_ENDPOINTS.AUTH.ME)
+    return response.data
   }
 
   // Password Reset

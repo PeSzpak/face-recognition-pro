@@ -8,6 +8,8 @@ import {
   Scan,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { recognitionService } from "../../services/recognition";
+import { authService } from "../../services/auth";
 
 interface FaceIDAuthProps {
   onSuccess: (user: any) => void;
@@ -78,32 +80,66 @@ const FaceIDAuth: React.FC<FaceIDAuthProps> = ({ onSuccess, onError }) => {
   const processFaceID = async () => {
     setAuthState("processing");
 
-    // Simular processamento de Face ID
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      // Capturar frame da webcam
+      if (!videoRef.current) {
+        throw new Error('Câmera não disponível');
+      }
 
-    // Simular resultado (90% sucesso, 10% falha para demonstração)
-    const success = Math.random() > 0.1;
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        throw new Error('Erro ao processar imagem');
+      }
 
-    if (success) {
-      const mockUser = {
-        id: "1",
-        name: "Usuário MMTec",
-        role: "Administrator",
-        lastAccess: new Date().toISOString(),
-        confidence: 0.94,
-      };
+      ctx.drawImage(videoRef.current, 0, 0);
 
-      setUser(mockUser);
-      setAuthState("success");
+      // Converter para blob
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b);
+          else reject(new Error('Erro ao converter imagem'));
+        }, 'image/jpeg', 0.95);
+      });
 
-      setTimeout(() => {
-        onSuccess(mockUser);
-        toast.success(`Bem-vindo, ${mockUser.name}!`);
-      }, 1500);
-    } else {
-      setError("Face ID não reconhecido. Tente novamente.");
+      // Criar arquivo
+      const file = new File([blob], 'face-auth.jpg', { type: 'image/jpeg' });
+
+      // Enviar para reconhecimento
+      const result = await recognitionService.identifyFace(file);
+
+      if (result.recognized && result.person_id) {
+        // Buscar dados completos do usuário
+        const userResponse = await authService.getCurrentUser();
+        
+        const authenticatedUser = {
+          id: userResponse.id,
+          name: userResponse.full_name || userResponse.username,
+          role: 'user',
+          lastAccess: new Date().toISOString(),
+          confidence: result.confidence || 0,
+        };
+
+        setUser(authenticatedUser);
+        setAuthState("success");
+
+        setTimeout(() => {
+          onSuccess(authenticatedUser);
+          toast.success(`Bem-vindo, ${authenticatedUser.name}!`);
+        }, 1500);
+      } else {
+        setError("Rosto não reconhecido no sistema. Use login tradicional.");
+        setAuthState("error");
+        onError("Face not recognized");
+      }
+    } catch (error: any) {
+      console.error('Erro no Face ID:', error);
+      setError(error.message || "Erro ao processar Face ID");
       setAuthState("error");
-      onError("Face ID not recognized");
+      onError(error.message || "Face ID processing failed");
     }
   };
 

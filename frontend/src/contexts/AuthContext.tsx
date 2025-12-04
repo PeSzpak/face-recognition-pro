@@ -8,18 +8,22 @@ import React, {
 
 interface User {
   id: string;
-  name: string;
-  role: string;
-  email?: string;
+  username: string;
+  email: string;
+  full_name?: string;
+  role?: string;
   avatar?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  loading: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
-  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,9 +69,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value = {
     user,
     isAuthenticated: !!user,
+    isLoading: loading,
+    loading,
     login,
     logout,
-    loading,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

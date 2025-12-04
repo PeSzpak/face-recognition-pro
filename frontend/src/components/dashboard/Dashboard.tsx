@@ -13,6 +13,8 @@ import {
   BarChart3
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { dashboardService } from '../../services/dashboard'
+import toast from 'react-hot-toast'
 
 interface DashboardStats {
   totalRecognitions: number
@@ -48,76 +50,66 @@ const Dashboard: React.FC = () => {
       setCurrentTime(new Date())
     }, 1000)
 
-    // Load dashboard data
-    const loadDashboardData = () => {
-      setTimeout(() => {
-        setStats({
-          totalRecognitions: 15247,
-          successRate: 97.8,
-          activeUsers: 187,
-          systemUptime: '28d 14h 32m',
-          todayRecognitions: 143,
-          weeklyGrowth: 18.5,
-          averageConfidence: 94.2,
-          spoofingAttempts: 3
-        })
-
-        setRecentActivity([
-          {
-            id: 1,
-            type: 'success',
-            user: 'João Silva',
-            action: 'Acesso autorizado - Entrada principal',
-            time: '1 min atrás',
-            confidence: 97.2,
-            location: 'Portaria A'
-          },
-          {
-            id: 2,
-            type: 'success',
-            user: 'Maria Santos',
-            action: 'Acesso autorizado - Laboratório',
-            time: '3 min atrás',
-            confidence: 95.8,
-            location: 'Lab 01'
-          },
-          {
-            id: 3,
-            type: 'warning',
-            user: 'Tentativa de spoofing',
-            action: 'Acesso negado - Foto detectada',
-            time: '8 min atrás',
-            confidence: 0,
-            location: 'Portaria B'
-          },
-          {
-            id: 4,
-            type: 'success',
-            user: 'Pedro Costa',
-            action: 'Acesso autorizado - Sala de reuniões',
-            time: '12 min atrás',
-            confidence: 96.1,
-            location: 'Sala 201'
-          },
-          {
-            id: 5,
-            type: 'error',
-            user: 'Usuário desconhecido',
-            action: 'Acesso negado - Pessoa não cadastrada',
-            time: '15 min atrás',
-            confidence: 0,
-            location: 'Portaria A'
-          }
+    // Load dashboard data from API
+    const loadDashboardData = async () => {
+      try {
+        const [statsData, activityData] = await Promise.all([
+          dashboardService.getStats(),
+          dashboardService.getRecentActivity()
         ])
 
+        // Calcular taxa de sucesso
+        const successRate = statsData.total_recognitions > 0
+          ? (statsData.successful_recognitions / statsData.total_recognitions) * 100
+          : 0
+
+        setStats({
+          totalRecognitions: statsData.total_recognitions,
+          successRate: Math.round(successRate * 10) / 10,
+          activeUsers: statsData.active_persons,
+          systemUptime: '28d 14h 32m', // TODO: calcular uptime real
+          todayRecognitions: statsData.recognitions_today,
+          weeklyGrowth: 18.5, // TODO: calcular crescimento real
+          averageConfidence: Math.round(statsData.accuracy * 10) / 10,
+          spoofingAttempts: 0 // TODO: adicionar ao backend
+        })
+
+        // Mapear atividades para o formato do componente
+        const mappedActivity = activityData.slice(0, 5).map((act, index) => ({
+          id: index + 1,
+          type: act.type === 'recognition_success' ? 'success' : 
+                act.type === 'recognition_failed' ? 'error' : 'warning',
+          user: act.person_name || 'Sistema',
+          action: act.details,
+          time: formatTimeAgo(act.timestamp),
+          confidence: act.confidence ? Math.round(act.confidence * 100) : 0,
+          location: 'Sistema'
+        }))
+
+        setRecentActivity(mappedActivity)
         setLoading(false)
-      }, 1000)
+      } catch (error) {
+        console.error('Erro ao carregar dados do dashboard:', error)
+        toast.error('Erro ao carregar estatísticas')
+        setLoading(false)
+      }
     }
 
     loadDashboardData()
 
     return () => clearInterval(timer)
   }, [])
+
+  const formatTimeAgo = (timestamp: string): string => {
+    const now = new Date()
+    const then = new Date(timestamp)
+    const seconds = Math.floor((now.getTime() - then.getTime()) / 1000)
+    
+    if (seconds < 60) return 'agora'
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} min atrás`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h atrás`
+    return `${Math.floor(seconds / 86400)}d atrás`
+  }
 
   const statCards = [
     {

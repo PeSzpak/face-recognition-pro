@@ -18,34 +18,28 @@ async def get_dashboard_stats(
     """Get dashboard statistics."""
     try:
         # Get total persons
-        persons_result = db.table("persons").select("*", count="exact").execute()
-        total_persons = len(persons_result.data) if persons_result.data else 0
+        persons_result = db.execute_query("SELECT COUNT(*) as count FROM persons")
+        total_persons = persons_result[0]["count"] if persons_result else 0
         
         # Get active persons
-        active_persons_result = db.table("persons").select("*").eq("active", True).execute()
-        active_persons = len(active_persons_result.data) if active_persons_result.data else 0
+        active_persons_result = db.execute_query("SELECT COUNT(*) as count FROM persons WHERE active = true")
+        active_persons = active_persons_result[0]["count"] if active_persons_result else 0
         
         # Get recognition logs
-        logs_result = db.table("recognition_logs").select("*").execute()
-        total_recognitions = len(logs_result.data) if logs_result.data else 0
+        total_logs = db.execute_query("SELECT COUNT(*) as count FROM recognition_logs")
+        total_recognitions = total_logs[0]["count"] if total_logs else 0
         
-        # Get today's recognitions (simplified)
-        from datetime import datetime
-        today = datetime.now().date()
-        recognitions_today = 0
-        if logs_result.data:
-            recognitions_today = len([
-                log for log in logs_result.data 
-                if datetime.fromisoformat(log["created_at"].replace('Z', '+00:00')).date() == today
-            ])
+        # Get today's recognitions
+        today_logs = db.execute_query(
+            "SELECT COUNT(*) as count FROM recognition_logs WHERE DATE(created_at) = CURRENT_DATE"
+        )
+        recognitions_today = today_logs[0]["count"] if today_logs else 0
         
         # Get successful recognitions
-        successful_recognitions = 0
-        if logs_result.data:
-            successful_recognitions = len([
-                log for log in logs_result.data 
-                if log["status"] == "success"
-            ])
+        success_logs = db.execute_query(
+            "SELECT COUNT(*) as count FROM recognition_logs WHERE status = 'success'"
+        )
+        successful_recognitions = success_logs[0]["count"] if success_logs else 0
         
         # Calculate accuracy
         accuracy = (successful_recognitions / total_recognitions * 100) if total_recognitions > 0 else 0
@@ -67,47 +61,54 @@ async def get_dashboard_stats(
         logger.error(f"Failed to get dashboard stats: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve dashboard statistics"
+            detail=f"Failed to retrieve dashboard statistics: {str(e)}"
         )
 
 
-@router.get("/recent")
+@router.get("/activity")
 async def get_recent_activities(
     limit: int = 10,
     current_user=Depends(get_current_user),
     db=Depends(get_database)
-) -> List[Dict]:
+) -> Dict:
     """Get recent activities."""
     try:
         # Get recent recognition logs with person names
-        result = db.table("recognition_logs").select("""
-            id, person_id, confidence, status, processing_time, created_at,
-            persons.name as person_name
-        """).join(
-            "persons", "recognition_logs.person_id", "persons.id", how="left"
-        ).order("created_at", desc=True).limit(limit).execute()
+        result = db.execute_query(
+            """
+            SELECT 
+                rl.id, rl.person_id, rl.confidence, rl.status, 
+                rl.processing_time, rl.created_at,
+                p.name as person_name
+            FROM recognition_logs rl
+            LEFT JOIN persons p ON rl.person_id = p.id
+            ORDER BY rl.created_at DESC
+            LIMIT %s
+            """,
+            (limit,)
+        )
         
         activities = []
-        if result.data:
-            for log in result.data:
+        if result:
+            for log in result:
                 activity_type = "recognition_success" if log["status"] == "success" else "recognition_failed"
                 activities.append({
-                    "id": log["id"],
+                    "id": str(log["id"]),
                     "type": activity_type,
-                    "person_id": log["person_id"],
+                    "person_id": str(log["person_id"]) if log["person_id"] else None,
                     "person_name": log.get("person_name", "Unknown"),
-                    "confidence": log["confidence"],
-                    "timestamp": log["created_at"],
+                    "confidence": float(log["confidence"]) if log["confidence"] else 0,
+                    "timestamp": log["created_at"].isoformat() if log["created_at"] else None,
                     "details": f"Recognition {'successful' if log['status'] == 'success' else 'failed'}"
                 })
         
-        return activities
+        return {"activity": activities}
         
     except Exception as e:
         logger.error(f"Failed to get recent activities: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve recent activities"
+            detail=f"Failed to retrieve recent activities: {str(e)}"
         )
 
 

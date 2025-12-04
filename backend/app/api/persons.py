@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.post("", response_model=PersonResponse)
 @router.post("/", response_model=PersonResponse)
 async def create_person(
     person_data: PersonCreateRequest,
@@ -32,40 +33,59 @@ async def create_person(
 ):
     """Create a new person without photos (photos added separately)."""
     try:
-        # Create person record
-        person_dict = {
-            "name": person_data.name,
-            "description": person_data.description,
-            "active": True,
-            "created_by": current_user["sub"]
-        }
+        # Create person record using PostgreSQL with new fields
+        query = """
+            INSERT INTO persons (
+                name, description, active, created_by, photo_count,
+                role, department, position, employee_id, email, phone, can_use_face_auth
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, name, description, active, photo_count, created_at, updated_at,
+                      role, department, position, employee_id, email, phone, can_use_face_auth
+        """
         
-        result = db.table("persons").insert(person_dict).execute()
+        result = db.execute_query(
+            query,
+            (
+                person_data.name, 
+                person_data.description, 
+                True, 
+                current_user["sub"], 
+                0,
+                person_data.role or 'user',
+                person_data.department,
+                person_data.position,
+                person_data.employee_id,
+                person_data.email,
+                person_data.phone,
+                person_data.can_use_face_auth or False
+            )
+        )
         
-        if not result.data:
+        if not result:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create person"
             )
         
-        created_person = result.data[0]
+        created_person = result[0]
         
         logger.info(f"Person created: {created_person['id']} - {person_data.name}")
         
-        return PersonResponse(**created_person, photo_count=0)
+        return PersonResponse(**created_person)
         
     except Exception as e:
         logger.error(f"Failed to create person: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create person"
+            detail=f"Failed to create person: {str(e)}"
         )
 
 
 @router.post("/{person_id}/photos")
 async def add_person_photos(
     person_id: str,
-    images: List[str] = Form(..., description="Base64 encoded images"),
+    photos: List[UploadFile] = File(...),
     current_user=Depends(get_current_user),
     db=Depends(get_database),
     face_service=Depends(get_face_recognition_service),
@@ -74,35 +94,37 @@ async def add_person_photos(
     """Add photos to an existing person and extract embeddings."""
     try:
         # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
+        person_result = db.execute_query(
+            "SELECT * FROM persons WHERE id = %s",
+            (person_id,)
+        )
+        
+        if not person_result:
             raise PersonNotFoundException(person_id)
         
-        person = person_result.data[0]
+        person = person_result[0]
         
         # Process each image
         embeddings = []
-        processed_images = []
+        processed_count = 0
         
-        for i, image_base64 in enumerate(images):
+        for i, photo in enumerate(photos):
             try:
-                # Process image for face recognition
-                cv2_image, embeddings_data = face_service.process_image_for_recognition(image_base64)
+                # Read file content
+                contents = await photo.read()
                 
-                if not embeddings_data:
-                    logger.warning(f"No faces detected in image {i} for person {person_id}")
-                    continue
+                # Convert to base64
+                image_base64 = base64.b64encode(contents).decode('utf-8')
+                image_base64 = f"data:image/jpeg;base64,{image_base64}"
                 
-                # Take the best quality embedding
-                best_embedding = max(embeddings_data, key=lambda x: x['quality_score'])
-                embeddings.append(best_embedding['embedding'])
+                # Extract embedding using face service
+                embedding = face_service.extract_embedding_from_base64(image_base64)
                 
-                # Save image info (you might want to save actual images to storage)
-                processed_images.append({
-                    "image_index": i,
-                    "quality_score": best_embedding['quality_score'],
-                    "face_region": best_embedding['region']
-                })
+                if embedding is not None:
+                    embeddings.append(embedding)
+                    processed_count += 1
+                else:
+                    logger.warning(f"No face detected in image {i} for person {person_id}")
                 
             except Exception as e:
                 logger.warning(f"Failed to process image {i} for person {person_id}: {e}")
@@ -120,17 +142,24 @@ async def add_person_photos(
         vector_db.upsert_person_embeddings(person_id, embeddings, metadata)
         
         # Update person photo count
-        photo_count = len(embeddings)
-        db.table("persons").update({"photo_count": photo_count}).eq("id", person_id).execute()
+        current_count = person.get("photo_count", 0)
+        new_count = current_count + len(embeddings)
         
-        logger.info(f"Added {photo_count} photos to person {person_id}")
+        db.execute_query(
+            "UPDATE persons SET photo_count = %s WHERE id = %s",
+            (new_count, person_id),
+            fetch=False
+        )
+        
+        logger.info(f"Added {len(embeddings)} photos to person {person_id}")
         
         return JSONResponse(
             content={
-                "message": f"Successfully added {photo_count} photos",
+                "message": f"Successfully added {len(embeddings)} photos",
                 "person_id": person_id,
-                "photos_processed": len(processed_images),
-                "embeddings_created": len(embeddings)
+                "photos_processed": processed_count,
+                "embeddings_created": len(embeddings),
+                "total_photos": new_count
             }
         )
         
@@ -140,14 +169,16 @@ async def add_person_photos(
         logger.error(f"Failed to add photos to person {person_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process photos"
+            detail=f"Failed to process photos: {str(e)}"
         )
 
 
+@router.get("", response_model=PersonListResponse)
 @router.get("/", response_model=PersonListResponse)
 async def list_persons(
     page: int = 1,
-    size: int = 20,
+    per_page: int = 20,
+    size: Optional[int] = None,
     search: Optional[str] = None,
     active_only: bool = True,
     current_user=Depends(get_current_user),
@@ -155,35 +186,52 @@ async def list_persons(
 ):
     """List persons with pagination and search."""
     try:
+        # Use size if provided, otherwise per_page
+        page_size = size if size is not None else per_page
+        
         # Build query
-        query = db.table("persons").select("*")
+        conditions = []
+        params = []
         
         if active_only:
-            query = query.eq("active", True)
+            conditions.append("active = %s")
+            params.append(True)
         
         if search:
-            query = query.ilike("name", f"%{search}%")
+            conditions.append("name ILIKE %s")
+            params.append(f"%{search}%")
+        
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
         
         # Get total count
-        count_result = query.execute()
-        total = len(count_result.data) if count_result.data else 0
+        count_query = f"SELECT COUNT(*) as total FROM persons WHERE {where_clause}"
+        count_result = db.execute_query(count_query, tuple(params))
+        total = count_result[0]['total'] if count_result else 0
         
-        # Apply pagination
-        offset = (page - 1) * size
-        result = query.order("created_at", desc=True).range(offset, offset + size - 1).execute()
+        # Get paginated results
+        offset = (page - 1) * page_size
+        query = f"""
+            SELECT id, name, description, active, photo_count, created_at, updated_at
+            FROM persons
+            WHERE {where_clause}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        
+        result = db.execute_query(query, tuple(params + [page_size, offset]))
         
         persons = []
-        if result.data:
-            for person_data in result.data:
+        if result:
+            for person_data in result:
                 persons.append(PersonResponse(**person_data))
         
-        has_next = offset + size < total
+        has_next = offset + page_size < total
         
         return PersonListResponse(
             persons=persons,
             total=total,
             page=page,
-            size=size,
+            size=page_size,
             has_next=has_next
         )
         
@@ -191,7 +239,7 @@ async def list_persons(
         logger.error(f"Failed to list persons: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve persons"
+            detail=f"Failed to retrieve persons: {str(e)}"
         )
 
 
@@ -203,12 +251,13 @@ async def get_person(
 ):
     """Get person by ID."""
     try:
-        result = db.table("persons").select("*").eq("id", person_id).execute()
+        query = "SELECT * FROM persons WHERE id = %s"
+        result = db.execute_query(query, (person_id,))
         
-        if not result.data:
+        if not result:
             raise PersonNotFoundException(person_id)
         
-        person = result.data[0]
+        person = result[0]
         return PersonResponse(**person)
         
     except PersonNotFoundException:
@@ -217,7 +266,7 @@ async def get_person(
         logger.error(f"Failed to get person {person_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve person"
+            detail=f"Failed to retrieve person: {str(e)}"
         )
 
 
@@ -231,33 +280,54 @@ async def update_person(
     """Update person information."""
     try:
         # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
+        person_result = db.execute_query(
+            "SELECT * FROM persons WHERE id = %s",
+            (person_id,)
+        )
+        
+        if not person_result:
             raise PersonNotFoundException(person_id)
         
         # Build update data
-        update_data = {}
-        if person_data.name is not None:
-            update_data["name"] = person_data.name
-        if person_data.description is not None:
-            update_data["description"] = person_data.description
-        if person_data.active is not None:
-            update_data["active"] = person_data.active
+        updates = []
+        params = []
         
-        if not update_data:
+        if person_data.name is not None:
+            updates.append("name = %s")
+            params.append(person_data.name)
+        
+        if person_data.description is not None:
+            updates.append("description = %s")
+            params.append(person_data.description)
+        
+        if person_data.active is not None:
+            updates.append("active = %s")
+            params.append(person_data.active)
+        
+        if not updates:
             # No changes
-            return PersonResponse(**person_result.data[0])
+            return PersonResponse(**person_result[0])
+        
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(person_id)
         
         # Update person
-        result = db.table("persons").update(update_data).eq("id", person_id).execute()
+        query = f"""
+            UPDATE persons
+            SET {', '.join(updates)}
+            WHERE id = %s
+            RETURNING id, name, description, active, photo_count, created_at, updated_at
+        """
         
-        if not result.data:
+        result = db.execute_query(query, tuple(params))
+        
+        if not result:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update person"
             )
         
-        updated_person = result.data[0]
+        updated_person = result[0]
         
         logger.info(f"Person updated: {person_id}")
         
@@ -269,7 +339,7 @@ async def update_person(
         logger.error(f"Failed to update person {person_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update person"
+            detail=f"Failed to update person: {str(e)}"
         )
 
 
@@ -283,15 +353,23 @@ async def delete_person(
     """Delete person and all associated data."""
     try:
         # Verify person exists
-        person_result = db.table("persons").select("*").eq("id", person_id).execute()
-        if not person_result.data:
+        person_result = db.execute_query(
+            "SELECT * FROM persons WHERE id = %s",
+            (person_id,)
+        )
+        
+        if not person_result:
             raise PersonNotFoundException(person_id)
         
         # Delete embeddings from vector database
         vector_db.delete_person_embeddings(person_id)
         
         # Delete person from database
-        db.table("persons").delete().eq("id", person_id).execute()
+        db.execute_query(
+            "DELETE FROM persons WHERE id = %s",
+            (person_id,),
+            fetch=False
+        )
         
         logger.info(f"Person deleted: {person_id}")
         
@@ -305,5 +383,5 @@ async def delete_person(
         logger.error(f"Failed to delete person {person_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete person"
+            detail=f"Failed to delete person: {str(e)}"
         )

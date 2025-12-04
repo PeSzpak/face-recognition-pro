@@ -1,5 +1,5 @@
 // API Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000'
 
 // Storage Keys
 export const STORAGE_KEYS = {
@@ -17,56 +17,56 @@ export const API_ENDPOINTS = {
   
   // Auth endpoints
   AUTH: {
-    LOGIN: '/auth/login',
-    REGISTER: '/auth/register',
-    LOGOUT: '/auth/logout',
-    REFRESH: '/auth/refresh',
-    ME: '/auth/me',
-    PASSWORD_RESET: '/auth/password-reset',
-    PASSWORD_RESET_CONFIRM: '/auth/password-reset/confirm',
-    SESSIONS: '/auth/sessions',
+    LOGIN: '/api/auth/login',
+    REGISTER: '/api/auth/register',
+    LOGOUT: '/api/auth/logout',
+    REFRESH: '/api/auth/refresh',
+    ME: '/api/auth/me',
+    PASSWORD_RESET: '/api/auth/password-reset',
+    PASSWORD_RESET_CONFIRM: '/api/auth/password-reset/confirm',
+    SESSIONS: '/api/auth/sessions',
   },
   
   // Token refresh (legacy support)
-  REFRESH: '/auth/refresh',
+  REFRESH: '/api/auth/refresh',
   
   // Persons endpoints
   PERSONS: {
-    LIST: '/persons',
-    CREATE: '/persons',
-    DETAIL: (id: string) => `/persons/${id}`,
-    UPDATE: (id: string) => `/persons/${id}`,
-    DELETE: (id: string) => `/persons/${id}`,
-    PHOTOS: (id: string) => `/persons/${id}/photos`,
-    SEARCH: '/persons/search',
-    STATS: (id: string) => `/persons/${id}/stats`,
+    LIST: '/api/persons',
+    CREATE: '/api/persons',
+    DETAIL: (id: string) => `/api/persons/${id}`,
+    UPDATE: (id: string) => `/api/persons/${id}`,
+    DELETE: (id: string) => `/api/persons/${id}`,
+    PHOTOS: (id: string) => `/api/persons/${id}/photos`,
+    SEARCH: '/api/persons/search',
+    STATS: (id: string) => `/api/persons/${id}/stats`,
   },
   
   // Recognition endpoints
   RECOGNITION: {
-    UPLOAD: '/recognition/upload',
-    WEBCAM: '/recognition/webcam',
-    BATCH: '/recognition/batch',
-    HISTORY: '/recognition/history',
+    UPLOAD: '/api/recognition/upload',
+    WEBCAM: '/api/recognition/webcam',
+    BATCH: '/api/recognition/batch',
+    HISTORY: '/api/recognition/history',
   },
   
   // Recognition legacy endpoints
-  RECOGNITION_IDENTIFY: '/recognition/identify',
-  RECOGNITION_LOGS: '/recognition/logs',
-  RECOGNITION_STATS: '/recognition/stats',
+  RECOGNITION_IDENTIFY: '/api/recognition/identify',
+  RECOGNITION_LOGS: '/api/recognition/logs',
+  RECOGNITION_STATS: '/api/recognition/stats',
   
   // Dashboard endpoints
   DASHBOARD: {
-    STATS: '/dashboard/stats',
-    ACTIVITY: '/dashboard/activity',
+    STATS: '/api/dashboard/stats',
+    ACTIVITY: '/api/dashboard/activity',
   },
   
   // Analytics endpoints
   ANALYTICS: {
-    OVERVIEW: '/analytics/overview',
-    PERSONS: '/analytics/persons',
-    RECOGNITION: '/analytics/recognition',
-    EXPORT: '/analytics/export',
+    OVERVIEW: '/api/analytics/overview',
+    PERSONS: '/api/analytics/persons',
+    RECOGNITION: '/api/analytics/recognition',
+    EXPORT: '/api/analytics/export',
   },
 } as const
 

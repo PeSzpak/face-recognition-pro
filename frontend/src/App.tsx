@@ -125,7 +125,7 @@ const App: React.FC = () => {
               }
             />
 
-            <Route path="/" element={<Navigate to="/face-auth" replace />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
       </Router>

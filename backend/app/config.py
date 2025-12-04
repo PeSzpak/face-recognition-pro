@@ -4,15 +4,13 @@ import os
 
 
 class Settings(BaseSettings):
-    # Database
-    supabase_url: str
-    supabase_key: str
-    supabase_service_key: str
+    # Database (PostgreSQL direto)
+    database_url: str
     
-    # Vector Database
-    pinecone_api_key: str
-    pinecone_environment: str
-    pinecone_index_name: str = "face-recognition-embeddings"
+    # Vector Database (Qdrant)
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_collection_name: str = "face_embeddings"
     
     # Security
     secret_key: str

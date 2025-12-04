@@ -1,70 +1,259 @@
 # Face Recognition Pro
 
-## Descrição do Projeto
-O **Face Recognition Pro** é um sistema completo de reconhecimento facial desenvolvido com FastAPI, InsightFace, Pinecone e Supabase. O objetivo do projeto é fornecer uma aplicação web moderna e escalável para cadastro e reconhecimento facial em tempo real, utilizando as melhores práticas de desenvolvimento.
+Sistema profissional de reconhecimento facial com IA, 100% local via Docker.
 
-## Tecnologias Utilizadas
-- **Backend**: FastAPI + Python 3.8+
-- **IA Engine**: DeepFace (modelos: VGG-Face, Facenet, ArcFace) + OpenCV
-- **Banco Vetorial**: Pinecone (plano gratuito)
-- **Banco Relacional**: Supabase PostgreSQL
-- **Frontend**: React com TypeScript
-- **Autenticação**: JWT + Supabase Auth
-- **Upload de Imagens**: Cloudinary ou armazenamento local
+## 🚀 Início Rápido
 
-## Funcionalidades
-1. **Cadastro de Pessoas**: Permite o upload de múltiplas fotos e processamento automático.
-2. **Reconhecimento Facial**: Suporta upload de fotos ou captura via webcam, com resultados em tempo real.
-3. **Gestão de Pessoas**: CRUD completo para gerenciamento de registros de pessoas.
-4. **Dashboard**: Interface administrativa moderna com estatísticas e logs de reconhecimento.
+```bash
+# 1. Clone e entre no diretório
+git clone https://github.com/PeSzpak/face-recognition-pro.git
+cd face-recognition-pro
 
-## Estrutura do Projeto
+# 2. Inicie os containers (primeira vez baixa modelos - 5-10 min)
+docker compose up -d --build
+
+# 3. Aguarde inicialização (~30 segundos após build)
+docker compose logs backend -f
+
+# 4. Acesse quando ver "Application startup complete"
+```
+
+### 🌐 URLs de Acesso
+
+- **Frontend**: http://localhost:5173
+- **API Docs**: http://localhost:8000/docs
+- **Qdrant Dashboard**: http://localhost:6333/dashboard
+
+### 🔐 Credenciais Padrão
+
+```
+Email: admin@facerecognition.pro
+Senha: admin123
+```
+
+## 🎯 Funcionalidades
+
+### ✅ Totalmente Funcionais
+- **Autenticação JWT** - Login seguro com tokens
+- **Reconhecimento Facial** - DeepFace + Facenet512 (512D vectors)
+- **Upload/Webcam** - Múltiplas formas de captura
+- **CRUD de Pessoas** - Criar, listar, editar, deletar
+- **Múltiplas Fotos** - Melhor precisão com várias imagens
+- **Dashboard Real-Time** - Estatísticas do banco de dados
+- **Logs Auditáveis** - Todos reconhecimentos salvos
+- **Vector Search** - Busca rápida com Qdrant
+- **100% Local** - Zero dependências externas
+
+### 🚫 Removido
+- ❌ Todos os mocks e simulações
+- ❌ Dados fake
+- ❌ Fallbacks de desenvolvimento
+
+## 🏗️ Arquitetura
+
+```
+┌─────────────┐      ┌──────────────┐      ┌──────────────┐
+│   Frontend  │─────▶│   Backend    │─────▶│  PostgreSQL  │
+│   React     │      │   FastAPI    │      │   Database   │
+│   :5173     │      │   :8000      │      │   :5432      │
+└─────────────┘      └──────┬───────┘      └──────────────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │    Qdrant    │
+                     │ Vector Store │
+                     │    :6333     │
+                     └──────────────┘
+```
+
+## 📋 Pré-requisitos
+
+- Docker Desktop instalado
+- 8GB RAM disponível
+- 5GB espaço em disco
+
+## 🛠️ Tecnologias
+
+### Backend
+- **FastAPI** 0.104.1 - Framework web moderno
+- **PostgreSQL** 15 - Banco relacional
+- **Qdrant** 1.15.5 - Vector database
+- **DeepFace** 0.0.92 - Reconhecimento facial
+- **TensorFlow** 2.15.0 - Machine learning
+- **OpenCV** - Detector de rostos
+
+### Frontend
+- **React** 18 - UI library
+- **TypeScript** 5 - Type safety
+- **Vite** 5 - Build tool
+- **TailwindCSS** 3 - Styling
+
+## 📂 Estrutura do Projeto
+
 ```
 face-recognition-pro/
 ├── backend/
 │   ├── app/
-│   ├── models/
-│   ├── uploads/
-│   ├── requirements.txt
-│   ├── .env
-│   └── run.py
+│   │   ├── api/          # Endpoints REST
+│   │   ├── core/         # Database, security
+│   │   ├── models/       # SQLAlchemy models
+│   │   ├── schemas/      # Pydantic schemas
+│   │   ├── services/     # Lógica de negócio
+│   │   └── utils/        # Helpers
+│   ├── models/           # Modelos DeepFace (auto-download)
+│   ├── uploads/          # Fotos temporárias
+│   ├── requirements.txt  # Dependências Python
+│   └── Dockerfile
 ├── frontend/
-│   ├── public/
 │   ├── src/
+│   │   ├── components/   # Componentes React
+│   │   ├── contexts/     # Context API
+│   │   ├── services/     # API clients
+│   │   ├── styles/       # CSS
+│   │   └── types/        # TypeScript types
 │   ├── package.json
-│   └── tsconfig.json
+│   └── Dockerfile
+├── database/
+│   └── init.sql          # Schema inicial
 ├── docker-compose.yml
-├── .gitignore
 └── README.md
 ```
 
-## Como Executar o Projeto
+## 🔧 Comandos Úteis
 
-### Backend
-1. Navegue até o diretório `backend`.
-2. Instale as dependências:
-   ```
-   pip install -r requirements.txt
-   ```
-3. Configure as variáveis de ambiente no arquivo `.env`.
-4. Execute a aplicação:
-   ```
-   uvicorn app.main:app --reload
-   ```
+### Gerenciar Containers
 
-### Frontend
-1. Navegue até o diretório `frontend`.
-2. Instale as dependências:
-   ```
-   npm install
-   ```
-3. Execute a aplicação:
-   ```
-   npm start
-   ```
+```bash
+# Iniciar
+docker compose up -d
 
-## Contribuição
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou pull requests.
+# Parar
+docker compose down
 
-## Licença
-Este projeto está licenciado sob a MIT License. Veja o arquivo LICENSE para mais detalhes.
+# Reiniciar apenas backend
+docker compose restart backend
+
+# Ver logs
+docker compose logs -f backend
+
+# Reconstruir tudo
+docker compose up -d --build --force-recreate
+```
+
+### Verificar Status
+
+```bash
+# Status dos containers
+docker compose ps
+
+# Ver banco de dados
+docker exec face-recognition-db psql -U admin -d face_recognition -c "SELECT * FROM persons;"
+
+# Ver logs de reconhecimento
+docker exec face-recognition-db psql -U admin -d face_recognition -c "SELECT * FROM recognition_logs ORDER BY created_at DESC LIMIT 10;"
+
+# Ver embeddings no Qdrant
+curl http://localhost:6333/collections/face_embeddings | python3 -m json.tool
+```
+
+## 📖 Como Usar
+
+### 1. Primeiro Acesso
+
+1. Abra http://localhost:5173
+2. Faça login com credenciais padrão
+3. Será redirecionado ao Dashboard
+
+### 2. Cadastrar Pessoa
+
+1. Menu lateral: "Pessoas"
+2. Botão: "+ Nova Pessoa"
+3. Preencha nome e descrição
+4. Upload de fotos (recomendado: 3-5 fotos diferentes ângulos)
+5. Salvar
+
+**Importante**: Quanto mais fotos, melhor a precisão!
+
+### 3. Reconhecer Rosto
+
+1. Menu lateral: "Reconhecimento"
+2. Escolha método:
+   - **Upload**: Envie arquivo de imagem
+   - **Webcam**: Capture ao vivo
+3. Sistema processa e retorna resultado
+
+### 4. Ver Resultados
+
+- **Dashboard**: Estatísticas gerais
+- **Pessoas**: Lista de cadastrados
+- **Reconhecimento**: Histórico de logs
+
+## 🐛 Troubleshooting
+
+### Backend não inicia
+
+```bash
+# Verificar logs
+docker compose logs backend
+
+# Reconstruir imagem
+docker compose up -d --build backend
+```
+
+### Erro "No face detected"
+
+- Certifique-se que a foto tem um rosto visível
+- Foto deve estar bem iluminada
+- Rosto deve estar frontal
+
+### Baixa precisão
+
+- Adicione mais fotos da pessoa (diferentes ângulos)
+- Use fotos com boa qualidade
+- Iluminação adequada
+
+### Containers não sobem
+
+```bash
+# Limpar tudo e recomeçar
+docker compose down -v
+docker compose up -d --build
+```
+
+## 🔒 Segurança
+
+- Senhas hasheadas com bcrypt
+- JWT tokens para autenticação
+- CORS configurado
+- SQL injection protegido (queries parametrizadas)
+- Validação de inputs com Pydantic
+
+## 📊 Performance
+
+- **Reconhecimento**: ~1-2s por imagem
+- **Threshold**: 0.6 (60% similaridade)
+- **Dimensões**: 512D vectors (Facenet512)
+- **Detector**: OpenCV (mais rápido)
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. Push para branch (`git push origin feature/nova-funcionalidade`)
+5. Abra um Pull Request
+
+## 📝 Licença
+
+MIT License - veja [LICENSE](LICENSE) para detalhes.
+
+## 👨‍💻 Autor
+
+**Pedro Szpak**
+- GitHub: [@PeSzpak](https://github.com/PeSzpak)
+
+## 🙏 Agradecimentos
+
+- [DeepFace](https://github.com/serengil/deepface) - Framework de reconhecimento facial
+- [Qdrant](https://qdrant.tech/) - Vector database
+- [FastAPI](https://fastapi.tiangolo.com/) - Framework web Python

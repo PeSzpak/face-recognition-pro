@@ -3,7 +3,12 @@ import time
 import logging
 from typing import List, Dict, Optional, Tuple
 import numpy as np
-from deepface import DeepFace
+# Patch tensorflow.keras compatibility BEFORE importing DeepFace
+from app.utils.tf_keras_compat import patch_tensorflow_keras
+patch_tensorflow_keras()
+
+# Delay DeepFace import until after initialization
+# from deepface import DeepFace
 import cv2
 from app.config import settings
 from app.utils.image_utils import (
@@ -23,12 +28,30 @@ class FaceRecognitionService:
         self.model_name = settings.face_recognition_model
         self.detector_backend = settings.face_detection_backend
         self.similarity_threshold = settings.similarity_threshold
+        self.DeepFace = None
         self._initialize_models()
+    
+    def _lazy_import_deepface(self):
+        """Lazy import DeepFace to avoid startup issues."""
+        if self.DeepFace is None:
+            try:
+                # Force environment to skip problematic detectors
+                os.environ['DEEPFACE_DETECTOR_BACKEND'] = self.detector_backend
+                from deepface import DeepFace
+                self.DeepFace = DeepFace
+                logger.info(f"DeepFace imported successfully with detector: {self.detector_backend}")
+            except Exception as e:
+                logger.error(f"Failed to import DeepFace: {e}")
+                raise FaceRecognitionException(f"DeepFace import failed: {str(e)}")
+        return self.DeepFace
     
     def _initialize_models(self):
         """Initialize and warm up DeepFace models."""
         try:
             logger.info(f"Initializing DeepFace with model: {self.model_name}")
+            
+            # Import DeepFace
+            DeepFace = self._lazy_import_deepface()
             
             # Create a dummy image to warm up the models
             dummy_img = np.ones((224, 224, 3), dtype=np.uint8) * 128
@@ -63,6 +86,8 @@ class FaceRecognitionService:
     def detect_faces(self, image: np.ndarray) -> List[Dict]:
         """Detect faces in image and return face regions."""
         try:
+            DeepFace = self._lazy_import_deepface()
+            
             # Extract faces using DeepFace
             faces = DeepFace.extract_faces(
                 img_path=image,
@@ -103,6 +128,7 @@ class FaceRecognitionService:
     def extract_embedding(self, image: np.ndarray, face_region: Optional[Dict] = None) -> np.ndarray:
         """Extract face embedding from image."""
         try:
+            DeepFace = self._lazy_import_deepface()
             start_time = time.time()
             
             # Enhance image quality
@@ -137,6 +163,24 @@ class FaceRecognitionService:
         except Exception as e:
             logger.error(f"Embedding extraction failed: {e}")
             raise FaceRecognitionException(f"Embedding extraction failed: {str(e)}")
+    
+    def extract_embedding_from_base64(self, image_base64: str) -> Optional[np.ndarray]:
+        """Extract face embedding from base64 image string."""
+        try:
+            # Convert base64 to cv2 image
+            image = base64_to_cv2(image_base64)
+            
+            # Extract embedding
+            embedding = self.extract_embedding(image)
+            
+            return embedding
+            
+        except NoFaceDetectedException:
+            logger.warning("No face detected in image")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to extract embedding from base64: {e}")
+            return None
     
     def extract_multiple_embeddings(self, image: np.ndarray) -> List[Dict]:
         """Extract embeddings for all faces in image."""
