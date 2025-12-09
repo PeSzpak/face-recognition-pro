@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from qdrant_client.http.models import Distance, VectorParams, PointStruct 
+from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from app.config import settings
 from app.core.exceptions import VectorDatabaseException
 
