@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
@@ -14,14 +14,12 @@ from app.core.exceptions import (
     AuthenticationException
 )
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
 app = FastAPI(
     title="Face Recognition Pro",
     description="Professional Face Recognition System with AI-powered identification",
@@ -30,16 +28,14 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Exception handlers
 @app.exception_handler(FaceRecognitionException)
 async def face_recognition_exception_handler(request, exc):
     return JSONResponse(
@@ -90,7 +86,6 @@ async def authentication_exception_handler(request, exc):
         headers=exc.headers
     )
 
-# Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(face_auth.router, prefix="/api/auth", tags=["face-authentication"])
 app.include_router(persons.router, prefix="/api/persons", tags=["persons"])
@@ -98,20 +93,16 @@ app.include_router(recognition.router, prefix="/api/recognition", tags=["recogni
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
-# Health check
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "Face Recognition Pro",
         "version": "1.0.0"
     }
 
-# Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint with API information."""
     return {
         "message": "Face Recognition Pro API",
         "version": "1.0.0",

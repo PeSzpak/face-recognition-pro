@@ -69,8 +69,7 @@ const App: React.FC = () => {
               path="/face-auth"
               element={
                 <FaceIDAuth
-                  onSuccess={(user) => {
-                    console.log("Face ID Success:", user);
+                  onSuccess={() => {
                     window.location.href = "/dashboard";
                   }}
                   onError={(error) => {

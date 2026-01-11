@@ -61,7 +61,6 @@ class AnalyticsService {
 
   exportReport(format: 'csv' | 'pdf' = 'csv'): void {
     // TODO: Implement report export
-    console.log(`Exporting report in ${format} format`)
   }
 }
 

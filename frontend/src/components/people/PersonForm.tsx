@@ -124,12 +124,10 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
     // Convert canvas to base64
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
     
-    // Add to selected images
     setSelectedImages(prev => [...prev, imageData]);
     
     const photoNumber = selectedImages.length + 1;
     toast.success(`Foto ${photoNumber} capturada!`);
-    console.log('Photo captured, total photos:', photoNumber);
   };
 
   const removeImage = (index: number) => {
@@ -182,7 +180,6 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
       }
 
       if (isEditing) {
-        // Update existing person
         const updateData: PersonUpdateRequest = {
           name: data.name,
           description: data.description || undefined,
@@ -190,14 +187,12 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
 
         await personsService.updatePerson(person.id, updateData);
 
-        // Add new photos if any
         if (selectedImages.length > 0) {
           await personsService.addPersonPhotos(person.id, selectedImages);
         }
 
         toast.success('Pessoa atualizada com sucesso!');
       } else {
-        // Create new person
         if (selectedImages.length === 0) {
           toast.error('Adicione pelo menos uma foto da pessoa');
           setError('root', {
@@ -213,14 +208,8 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSave, onCancel }) => 
           description: data.description || undefined,
         };
 
-        console.log('Creating person with data:', createData);
         const newPerson = await personsService.createPerson(createData);
-        console.log('Person created:', newPerson);
-
-        // Add photos
-        console.log('Adding photos, count:', selectedImages.length);
         await personsService.addPersonPhotos(newPerson.id, selectedImages);
-        console.log('Photos added successfully');
 
         toast.success('Pessoa cadastrada com sucesso!');
       }
