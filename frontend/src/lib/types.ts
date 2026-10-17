@@ -10,10 +10,11 @@ export interface Page<T> {
 
 export interface User {
   id: string
-  email: string
+  email: string | null
   username: string
   full_name: string | null
   person_id: string | null
+  password_login: boolean
   created_at: string
 }
 
@@ -35,6 +36,7 @@ export interface PersonFields {
 export interface Person extends PersonFields {
   id: string
   active: boolean
+  face_access: boolean
   sample_count: number
   cover_sample_id: string | null
   last_seen_at: string | null

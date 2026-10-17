@@ -63,7 +63,7 @@ function FaceIdCard() {
           </div>
         </div>
         <div className="flex gap-2">
-          {linked && (
+          {linked && user?.password_login && (
             <Button variant="ghost" onClick={() => unlink.mutate()} loading={unlink.isPending}>
               Desativar
             </Button>
@@ -180,11 +180,11 @@ export function SettingsPage() {
   const { user } = useAuth()
   return (
     <>
-      <PageHeader title="Configurações" description={`Conectado como ${user?.email}`} />
+      <PageHeader title="Configurações" description={`Conectado como ${user?.full_name || user?.username}`} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <FaceIdCard />
-          <PasswordCard />
+          {user?.password_login && <PasswordCard />}
         </div>
         <SystemCard />
       </div>

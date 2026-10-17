@@ -79,7 +79,7 @@ export function AppShell() {
           </div>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[13px] font-medium">{user?.full_name || user?.username}</div>
-            <div className="truncate text-[12px] text-faint">{user?.email}</div>
+            <div className="truncate text-[12px] text-faint">{user?.email ?? (user?.password_login ? user?.username : 'Acesso por Face ID')}</div>
           </div>
           <button onClick={signOut} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-ink" aria-label="Sair" title="Sair">
             <LogOut className="h-4 w-4" />

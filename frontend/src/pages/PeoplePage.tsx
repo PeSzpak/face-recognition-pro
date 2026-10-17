@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImageOff, Search, UserPlus, Users } from 'lucide-react'
+import { ImageOff, ScanFace, Search, UserPlus, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/PageHeader'
@@ -33,7 +33,10 @@ function PersonCard({ person }: { person: Person }) {
       <div className="flex items-start gap-3">
         <PersonAvatar person={person} size="lg" />
         <div className="min-w-0 flex-1 pt-1">
-          <div className="truncate font-semibold group-hover:text-accent">{person.name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-semibold group-hover:text-accent">{person.name}</span>
+            {person.face_access && <ScanFace className="h-3.5 w-3.5 shrink-0 text-accent" aria-label="Acesso por Face ID" />}
+          </div>
           <div className="truncate text-[12px] text-muted">{subtitle || person.email || 'Sem detalhes'}</div>
         </div>
       </div>

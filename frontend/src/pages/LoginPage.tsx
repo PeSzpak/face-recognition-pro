@@ -110,7 +110,7 @@ function FaceLogin() {
       <Button variant="primary" size="lg" className="mt-2 w-full justify-center" onClick={start} loading={scanning} disabled={scan.phase === 'success'} icon={<ScanFace className="h-4 w-4" />}>
         {scan.phase === 'failed' ? 'Tentar de novo' : 'Escanear rosto'}
       </Button>
-      <p className="mt-3 text-center text-[12px] text-faint">Ative o Face ID em Configurações depois de entrar com senha.</p>
+      <p className="mt-3 text-center text-[12px] text-faint">Disponível para pessoas com acesso por Face ID liberado no cadastro.</p>
     </div>
   )
 }

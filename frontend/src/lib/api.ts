@@ -90,6 +90,8 @@ export const api = {
   updatePerson: (id: string, body: Partial<PersonFields> & { active?: boolean }) =>
     data<Person>(http.patch(`/api/persons/${id}`, body)),
   deletePerson: (id: string) => http.delete(`/api/persons/${id}`),
+  setFaceAccess: (id: string, enabled: boolean) =>
+    data<Person>(enabled ? http.put(`/api/persons/${id}/face-access`) : http.delete(`/api/persons/${id}/face-access`)),
 
   samples: (personId: string) => data<Sample[]>(http.get(`/api/persons/${personId}/samples`)),
   addSamples: (personId: string, images: Blob[]) =>

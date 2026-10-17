@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Building2, Hash, ImagePlus, Mail, Pencil, Power, Trash2, Briefcase } from 'lucide-react'
+import { ArrowLeft, Building2, Hash, ImagePlus, Mail, Pencil, Power, ScanFace, Trash2, Briefcase } from 'lucide-react'
+import clsx from 'clsx'
 import { useState, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -24,6 +25,55 @@ function Detail({ icon, label, value }: { icon: ReactNode; label: string; value:
         <div className="text-[12px] text-faint">{label}</div>
         <div className="truncate">{value || <span className="text-faint">—</span>}</div>
       </div>
+    </div>
+  )
+}
+
+function FaceAccess({ person, onChange }: { person: Person; onChange: () => void }) {
+  const toggle = useMutation({
+    mutationFn: () => api.setFaceAccess(person.id, !person.face_access),
+    onSuccess: (updated) => {
+      onChange()
+      toast.success(updated.face_access ? `${person.name} pode desbloquear o app com o rosto` : 'Acesso por Face ID revogado')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const blocked = person.sample_count === 0 && !person.face_access
+  const hint = person.face_access
+    ? person.active
+      ? 'Pode entrar no painel olhando para a câmera.'
+      : 'Liberado, mas bloqueado enquanto o cadastro estiver inativo.'
+    : blocked
+      ? 'Adicione fotos para poder liberar.'
+      : 'Libere para esta pessoa desbloquear o app com o rosto.'
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ScanFace className={clsx('h-4 w-4', person.face_access ? 'text-accent' : 'text-faint')} />
+          <span className="font-medium">Acesso por Face ID</span>
+        </div>
+        <button
+          role="switch"
+          aria-checked={person.face_access}
+          aria-label="Acesso por Face ID"
+          disabled={blocked || toggle.isPending}
+          onClick={() => toggle.mutate()}
+          className={clsx(
+            'relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40',
+            person.face_access ? 'bg-accent' : 'bg-line',
+          )}
+        >
+          <span
+            className={clsx(
+              'absolute left-0 top-0.5 h-4 w-4 rounded-full bg-ink shadow transition-transform',
+              person.face_access ? 'translate-x-[18px]' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+      </div>
+      <p className="mt-1.5 text-[12px] text-muted">{hint}</p>
     </div>
   )
 }
@@ -181,6 +231,11 @@ export function PersonPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[24px] font-semibold tracking-tight">{person.name}</h1>
             {person.active ? <Badge tone="ok" dot>Ativa</Badge> : <Badge>Inativa</Badge>}
+            {person.face_access && (
+              <Badge tone="accent">
+                <ScanFace className="h-3 w-3" /> Face ID
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-muted">
             {person.last_seen_at ? `Reconhecida ${formatRelative(person.last_seen_at)}` : 'Nunca reconhecida'} · cadastrada em{' '}
@@ -202,6 +257,7 @@ export function PersonPage() {
 
       <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="panel h-fit divide-y divide-line px-5 py-2">
+          <FaceAccess person={person} onChange={refresh} />
           <Detail icon={<Mail className="h-4 w-4" />} label="E-mail" value={person.email} />
           <Detail icon={<Hash className="h-4 w-4" />} label="Matrícula" value={person.external_id} />
           <Detail icon={<Building2 className="h-4 w-4" />} label="Departamento" value={person.department} />
