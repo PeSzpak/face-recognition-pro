@@ -1,36 +1,17 @@
-# Use Python 3.10 slim image
 FROM python:3.10-slim
 
-# Install system dependencies for OpenCV and face recognition
-RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgomp1 \
-    curl \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TF_CPP_MIN_LOG_LEVEL=2 DEEPFACE_HOME=/models MEDIA_DIR=/media
 
-# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+COPY app ./app
 
-# Copy and set permissions for startup script
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
-# Ensure uploads directory exists (may already be copied)
-RUN mkdir -p uploads || true
-
-# Expose port
 EXPOSE 8000
-
-# Start application
-CMD ["/app/start.sh"]
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s CMD curl -fs http://localhost:8000/health || exit 1
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,7 @@
+.env
+.env.*
+**/__pycache__
+media
+uploads
+tests
+.pytest_cache

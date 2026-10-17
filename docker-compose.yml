@@ -1,94 +1,57 @@
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: face-recognition-db
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: face_recognition
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d face_recognition"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    networks:
-      - face-recognition-network
+      retries: 10
 
-  # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:latest
-    container_name: face-recognition-qdrant
+    image: qdrant/qdrant:v1.15.5
     ports:
       - "6333:6333"
     volumes:
-      - qdrant_storage:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 5s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - face-recognition-network
+      - qdrant_data:/qdrant/storage
 
-  # Backend API
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: face-recognition-backend
+    build: ./backend
     environment:
       DATABASE_URL: postgresql://admin:admin123@postgres:5432/face_recognition
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: face_recognition
-      DB_USER: admin
-      DB_PASSWORD: admin123
       QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      SECRET_KEY: face-recognition-secret-key-change-in-production-2024
+      SECRET_KEY: ${SECRET_KEY:-local-demo-secret-change-me}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      FACE_DETECTOR: ${FACE_DETECTOR:-retinaface}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
-      - backend_uploads:/app/uploads
+      - model_cache:/models
+      - media:/media
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
-    networks:
-      - face-recognition-network
+        condition: service_started
     restart: unless-stopped
 
-  # Frontend
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: face-recognition-frontend
-    environment:
-      VITE_API_URL: http://localhost:8000
+    build: ./frontend
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "8080:80"
     depends_on:
       - backend
-    networks:
-      - face-recognition-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
-  qdrant_storage:
-  backend_uploads:
-
-networks:
-  face-recognition-network:
-    driver: bridge
+  qdrant_data:
+  model_cache:
+  media:
