@@ -4,7 +4,9 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
+    "types": ["node"],
+    "emitDeclarationOnly": true,
+    "outDir": "node_modules/.tmp"
   },
   "include": ["vite.config.ts"]
 }

@@ -1,24 +1,35 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-        },
+        canvas: token('canvas'),
+        surface: token('surface'),
+        raised: token('raised'),
+        line: token('line'),
+        ink: token('ink'),
+        muted: token('muted'),
+        faint: token('faint'),
+        accent: token('accent'),
+        'accent-ink': token('accent-ink'),
+        ok: token('ok'),
+        warn: token('warn'),
+        bad: token('bad'),
+      },
+      fontFamily: {
+        sans: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['"Geist Mono"', 'ui-monospace', 'monospace'],
+      },
+      keyframes: {
+        scan: { '0%': { top: '0%' }, '100%': { top: '100%' } },
+        'fade-in': { from: { opacity: 0, transform: 'translateY(4px)' }, to: { opacity: 1, transform: 'none' } },
+      },
+      animation: {
+        scan: 'scan 2.4s ease-in-out infinite alternate',
+        'fade-in': 'fade-in .25s ease-out both',
       },
     },
   },

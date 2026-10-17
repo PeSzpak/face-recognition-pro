@@ -1,64 +1,56 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import { X } from 'lucide-react'
+import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import clsx from 'clsx'
 
 interface ModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  open: boolean
+  onClose: () => void
+  title: string
+  description?: string
+  wide?: boolean
+  children: ReactNode
+  footer?: ReactNode
 }
 
-const Modal: React.FC<ModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children, 
-  size = 'md' 
-}) => {
-  if (!isOpen) return null;
+export function Modal({ open, onClose, title, description, wide, children, footer }: ModalProps) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [open, onClose])
 
-  const sizeClasses = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4 text-center">
-        {/* Backdrop */}
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-          onClick={onClose}
-        />
-        
-        {/* Modal */}
-        <div className={`
-          relative bg-white rounded-lg shadow-xl transform transition-all w-full ${sizeClasses[size]}
-        `}>
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {title}
-            </h3>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <X className="h-5 w-5 text-gray-500" />
-            </button>
+  if (!open) return null
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={clsx(
+          'panel relative flex max-h-[92vh] w-full animate-fade-in flex-col shadow-2xl shadow-black/50 sm:rounded-xl',
+          wide ? 'sm:max-w-3xl' : 'sm:max-w-lg',
+        )}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div>
+            <h2 className="text-[15px] font-semibold">{title}</h2>
+            {description && <p className="mt-0.5 text-[13px] text-muted">{description}</p>}
           </div>
-          
-          {/* Content */}
-          <div className="p-6">
-            {children}
-          </div>
-        </div>
+          <button onClick={onClose} className="rounded-md p-1 text-faint hover:bg-raised hover:text-ink" aria-label="Fechar">
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="overflow-y-auto px-5 py-5">{children}</div>
+        {footer && <footer className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</footer>}
       </div>
-    </div>
-  );
-};
-
-export default Modal;
+    </div>,
+    document.body,
+  )
+}

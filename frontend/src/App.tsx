@@ -1,135 +1,45 @@
-import React from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-import { Toaster } from "react-hot-toast";
-import Login from "./components/auth/Login";
-import FaceIDAuth from "./components/auth/FaceIDAuth";
-import Dashboard from "./components/dashboard/Dashboard";
-import Recognition from "./components/recognition/Recognition";
-import People from "./components/people/People";
-import Analytics from "./components/analytics/Analytics";
-import Settings from "./components/settings/Settings";
-import MMTecLayout from "./components/layout/MMTecLayout";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { AppShell } from './components/AppShell'
+import { Skeleton } from './components/ui/Skeleton'
+import { useAuth } from './lib/auth'
+import { LoginPage } from './pages/LoginPage'
 
-// Protected Route Component
-const ProtectedRoute: React.FC<{
-  children: React.ReactNode;
-  page?: string;
-}> = ({ children, page = "dashboard" }) => {
-  const { isAuthenticated } = useAuth();
+const page = <K extends string>(load: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  lazy(() => load().then((module) => ({ default: module[name] })))
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+const DashboardPage = page(() => import('./pages/DashboardPage'), 'DashboardPage')
+const RecognizePage = page(() => import('./pages/RecognizePage'), 'RecognizePage')
+const PeoplePage = page(() => import('./pages/PeoplePage'), 'PeoplePage')
+const PersonPage = page(() => import('./pages/PersonPage'), 'PersonPage')
+const HistoryPage = page(() => import('./pages/HistoryPage'), 'HistoryPage')
+const SettingsPage = page(() => import('./pages/SettingsPage'), 'SettingsPage')
+
+export function App() {
+  const { user } = useAuth()
+
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    )
   }
 
-  return <MMTecLayout currentPage={page}>{children}</MMTecLayout>;
-};
-
-const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="App">
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: "#fff",
-                color: "#1a365d",
-                fontSize: "14px",
-                fontWeight: "500",
-                borderRadius: "12px",
-                padding: "16px",
-                boxShadow: "0 10px 15px -3px rgba(26, 54, 93, 0.1)",
-              },
-              success: {
-                iconTheme: {
-                  primary: "#10b981",
-                  secondary: "#fff",
-                },
-              },
-              error: {
-                iconTheme: {
-                  primary: "#dc2626",
-                  secondary: "#fff",
-                },
-              },
-            }}
-          />
-
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/face-auth"
-              element={
-                <FaceIDAuth
-                  onSuccess={() => {
-                    window.location.href = "/dashboard";
-                  }}
-                  onError={(error) => {
-                    console.error("Face ID Error:", error);
-                  }}
-                />
-              }
-            />
-
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute page="dashboard">
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/recognition"
-              element={
-                <ProtectedRoute page="recognition">
-                  <Recognition />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/people"
-              element={
-                <ProtectedRoute page="people">
-                  <People />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/analytics"
-              element={
-                <ProtectedRoute page="analytics">
-                  <Analytics />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute page="settings">
-                  <Settings />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route path="/" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </div>
-      </Router>
-    </AuthProvider>
-  );
-};
-
-export default App;
+    <Suspense fallback={<Skeleton className="m-10 h-64 rounded-xl" />}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="recognize" element={<RecognizePage />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="people/:id" element={<PersonPage />} />
+          <Route path="history" element={<HistoryPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
+  )
+}

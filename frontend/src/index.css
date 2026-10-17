@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: 10 12 15;
+  --surface: 17 20 25;
+  --raised: 24 28 35;
+  --line: 37 42 51;
+  --ink: 232 235 239;
+  --muted: 145 153 166;
+  --faint: 92 100 113;
+  --accent: 94 234 212;
+  --accent-ink: 4 47 46;
+  --ok: 52 211 153;
+  --warn: 251 191 36;
+  --bad: 251 113 133;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply min-h-full;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-[14px] text-ink antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+
+  ::selection {
+    @apply bg-accent/30;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-canvas;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-line bg-surface;
+  }
+
+  .label {
+    @apply text-[11px] font-medium uppercase tracking-[0.08em] text-faint;
+  }
+
+  .field {
+    @apply h-9 w-full rounded-lg border border-line bg-canvas px-3 text-ink placeholder:text-faint transition-colors focus:border-accent/60 focus:outline-none;
+  }
+
+  .grid-backdrop {
+    background-image: linear-gradient(rgb(var(--line) / 0.45) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--line) / 0.45) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
