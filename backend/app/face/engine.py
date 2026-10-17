@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 from dataclasses import dataclass
 
@@ -9,6 +10,22 @@ from app.errors import AppError
 from app.face.imaging import Box, face_quality
 
 logger = logging.getLogger(__name__)
+
+
+def _import_deepface():
+    # The aarch64 TensorFlow 2.15 wheel exposes tf.keras only as a lazy attribute, so
+    # `from tensorflow.keras.layers import ...` inside DeepFace's detectors fails.
+    import tensorflow as tf
+
+    for name in ("", ".layers", ".models", ".preprocessing", ".preprocessing.image", ".backend"):
+        module = tf.keras
+        for part in filter(None, name.split(".")):
+            module = getattr(module, part)
+        sys.modules.setdefault(f"tensorflow.keras{name}", module)
+
+    from deepface import DeepFace
+
+    return DeepFace
 
 
 @dataclass(frozen=True)
@@ -68,9 +85,7 @@ class FaceEngine:
 
     def _represent(self, image: np.ndarray, enforce: bool) -> list[dict]:
         if self._deepface is None:
-            from deepface import DeepFace
-
-            self._deepface = DeepFace
+            self._deepface = _import_deepface()
         with self._lock:
             return self._deepface.represent(
                 img_path=image,

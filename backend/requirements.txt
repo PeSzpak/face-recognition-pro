@@ -17,3 +17,4 @@ pillow==10.0.1
 opencv-python-headless==4.8.1.78
 tensorflow==2.15.0
 deepface==0.0.92
+mtcnn==0.1.1
