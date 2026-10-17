@@ -1,41 +1,49 @@
-from pydantic_settings import BaseSettings
-from typing import List
-import os
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+EMBEDDING_SIZES = {
+    "Facenet": 128,
+    "Facenet512": 512,
+    "ArcFace": 512,
+    "SFace": 128,
+    "VGG-Face": 4096,
+}
 
 
 class Settings(BaseSettings):
-    database_url: str
-    
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str = "postgresql://admin:admin123@localhost:5433/face_recognition"
+
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
-    qdrant_collection_name: str = "face_embeddings"
-    
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    
-    face_recognition_model: str = "Facenet512"
-    face_detection_backend: str = "opencv"
-    similarity_threshold: float = 0.6
-    
-    max_file_size: int = 10485760
-    allowed_extensions: List[str] = ["jpg", "jpeg", "png"]
-    upload_path: str = "./uploads"
-    
-    debug: bool = True
-    host: str = "0.0.0.0"
-    port: int = 8000
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    qdrant_collection: str = "face_samples"
 
+    secret_key: str = "dev-only-secret-change-me"
+    access_token_ttl_minutes: int = 12 * 60
 
-def create_upload_dir():
-    upload_path = "./uploads"
-    if not os.path.exists(upload_path):
-        os.makedirs(upload_path)
+    admin_email: str = "admin@facerecognition.pro"
+    admin_username: str = "admin"
+    admin_password: str = "admin123"
+
+    face_model: str = "Facenet512"
+    face_detector: str = "retinaface"
+    # Cosine similarity. DeepFace's own cutoff for Facenet512 is a cosine distance of 0.30.
+    match_threshold: float = 0.70
+    face_login_threshold: float = 0.78
+    candidate_floor: float = 0.45
+    min_face_px: int = 64
+    min_sample_quality: float = 0.35
+    max_upload_bytes: int = 8 * 1024 * 1024
+
+    media_dir: Path = Path("./media")
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
+    warmup_models: bool = True
+
+    @property
+    def embedding_size(self) -> int:
+        return EMBEDDING_SIZES[self.face_model]
 
 
 settings = Settings()
-create_upload_dir()
