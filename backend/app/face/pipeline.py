@@ -51,11 +51,17 @@ def _match_faces(faces: list[DetectedFace], threshold: float) -> list[FaceMatch]
     return matches
 
 
-def _person_names(person_ids: set[str]) -> dict[str, str]:
+COVER_SAMPLE = "(SELECT s.id FROM face_samples s WHERE s.person_id = p.id ORDER BY s.quality DESC LIMIT 1)"
+
+
+def _people(person_ids: set[str]) -> dict[str, dict]:
     if not person_ids:
         return {}
-    rows = db.fetch_all("SELECT id::text, name FROM persons WHERE id::text = ANY(%s)", (list(person_ids),))
-    return {row["id"]: row["name"] for row in rows}
+    rows = db.fetch_all(
+        f"SELECT id::text, name, {COVER_SAMPLE} AS cover_sample_id FROM persons p WHERE id::text = ANY(%s)",
+        (list(person_ids),),
+    )
+    return {row["id"]: row for row in rows}
 
 
 def _rejection(image: np.ndarray | None, faces: list[DetectedFace], person_id: UUID) -> str | None:
@@ -70,7 +76,7 @@ def _rejection(image: np.ndarray | None, faces: list[DetectedFace], person_id: U
         return f"Qualidade baixa ({face.quality:.0%}). Tente uma foto mais nítida e iluminada"
     owner = best_match(rank_people(vector_store.search(face.embedding, limit=5), settings.match_threshold), settings.match_threshold)
     if owner and owner.person_id != str(person_id):
-        name = _person_names({owner.person_id}).get(owner.person_id, "outra pessoa")
+        name = _people({owner.person_id}).get(owner.person_id, {}).get("name", "outra pessoa")
         return f"Este rosto já está cadastrado como {name}"
     return None
 
@@ -136,11 +142,17 @@ def identify(data: bytes, source: EventSource, record: bool) -> IdentifyResponse
     image = decode_image(data)
     faces = engine.detect(image)
     matches = _match_faces(faces, settings.match_threshold)
-    names = _person_names({r.person_id for m in matches for r in m.ranked})
+    people = _people({r.person_id for m in matches for r in m.ranked})
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     def candidate(ranked: Ranked) -> Candidate:
-        return Candidate(person_id=ranked.person_id, name=names.get(ranked.person_id, "?"), similarity=ranked.similarity)
+        person = people.get(ranked.person_id, {})
+        return Candidate(
+            person_id=ranked.person_id,
+            name=person.get("name", "?"),
+            cover_sample_id=person.get("cover_sample_id"),
+            similarity=ranked.similarity,
+        )
 
     results = [
         FaceResult(

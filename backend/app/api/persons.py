@@ -14,11 +14,10 @@ from app.vector_store import vector_store
 
 router = APIRouter(prefix="/api/persons", tags=["persons"])
 
-PERSON_SELECT = """
+PERSON_SELECT = f"""
     SELECT p.*,
            (SELECT count(*) FROM face_samples s WHERE s.person_id = p.id)::int AS sample_count,
-           (SELECT s.id FROM face_samples s WHERE s.person_id = p.id
-             ORDER BY s.quality DESC LIMIT 1) AS cover_sample_id,
+           {pipeline.COVER_SAMPLE} AS cover_sample_id,
            (SELECT max(e.created_at) FROM recognition_events e
              WHERE e.person_id = p.id AND e.status = 'identified') AS last_seen_at
     FROM persons p

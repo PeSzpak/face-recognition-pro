@@ -6,6 +6,7 @@ from app import db
 from app.config import settings
 from app.errors import AppError
 from app.face.engine import engine
+from app.face.pipeline import COVER_SAMPLE
 from app.schemas import DailyPoint, Overview, SystemInfo, TopPerson
 from app.security import CurrentUser
 from app.vector_store import vector_store
@@ -68,8 +69,8 @@ def overview(_: CurrentUser, days: int = Query(14, ge=1, le=90), tz: str = "UTC"
     for row in hourly_rows:
         hourly[row["hour"]] = row["n"]
     top = db.fetch_all(
-        """
-        SELECT p.id AS person_id, p.name, count(*)::int AS count
+        f"""
+        SELECT p.id AS person_id, p.name, {COVER_SAMPLE} AS cover_sample_id, count(*)::int AS count
         FROM recognition_events e JOIN persons p ON p.id = e.person_id
         WHERE e.status = 'identified' AND e.created_at > now() - make_interval(days => %(days)s)
         GROUP BY p.id, p.name

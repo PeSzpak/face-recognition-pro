@@ -116,6 +116,7 @@ class Box(BaseModel):
 class Candidate(BaseModel):
     person_id: UUID
     name: str
+    cover_sample_id: UUID | None
     similarity: float
 
 
@@ -157,6 +158,7 @@ class DailyPoint(BaseModel):
 class TopPerson(BaseModel):
     person_id: UUID
     name: str
+    cover_sample_id: UUID | None
     count: int
 
 
