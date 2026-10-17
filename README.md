@@ -1,259 +1,123 @@
 # Face Recognition Pro
 
-Sistema profissional de reconhecimento facial com IA, 100% local via Docker.
+Reconhecimento facial self-hosted: cadastre pessoas com algumas fotos e identifique-as pela câmera em tempo real, por upload ou no login por Face ID. Tudo roda na sua máquina. Nenhuma imagem sai para serviços externos.
 
-## 🚀 Início Rápido
+![Tela de login](docs/login.png)
+
+**Stack:** FastAPI · DeepFace (RetinaFace + Facenet512) · Qdrant · PostgreSQL · React 18 · TypeScript · Tailwind · React Query
+
+## Funcionalidades
+
+- **Reconhecimento ao vivo.** A câmera identifica todos os rostos do quadro algumas vezes por segundo e desenha caixas com nome e similaridade. A prévia não polui o histórico. O botão "Capturar e registrar" grava o evento.
+- **Reconhecimento por upload.** Aceita vários rostos por foto. Para cada rosto, mostra os candidatos ranqueados contra o limiar.
+- **Cadastro com controle de qualidade.** Fotos sem rosto, com mais de uma pessoa, borradas ou escuras são recusadas com o motivo. Um rosto que já pertence a outra pessoa também é recusado, o que evita cadastro duplicado.
+- **Face ID.** O operador cadastra o próprio rosto em Configurações e passa a entrar olhando para a câmera. O login usa um limiar mais rígido do que a identificação comum.
+- **Painel.** KPIs, resultados por dia, horários de pico e pessoas mais reconhecidas, tudo no fuso de quem acessa.
+- **Histórico auditável.** Cada reconhecimento e cada tentativa de Face ID (aceita, negada ou desconhecida) fica registrada, com filtros.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+    UI[React SPA] -->|/api| NGINX[nginx]
+    NGINX --> API[FastAPI]
+    API -->|detecção + embedding| DF[DeepFace<br/>RetinaFace + Facenet512]
+    API -->|vetores 512D, cosseno| QD[(Qdrant)]
+    API -->|pessoas, fotos, eventos| PG[(PostgreSQL)]
+```
+
+1. **Detecção e embedding em uma passada.** Uma única chamada a `DeepFace.represent` encontra os rostos com RetinaFace, alinha e gera um vetor de 512 dimensões com Facenet512.
+2. **Busca vetorial.** Cada foto cadastrada é um ponto no Qdrant, com id igual ao da linha em `face_samples`. A busca traz os vizinhos mais próximos por cosseno.
+3. **Ranqueamento por pessoa.** Os acertos são agrupados por pessoa, e a nota de cada uma é a da sua melhor foto (`app/face/matching.py`). A pessoa só é identificada se passar do limiar.
+4. **Auditoria.** Cada rosto analisado vira um evento em `recognition_events`.
+
+### Decisões de projeto
+
+| Decisão | Motivo |
+| --- | --- |
+| Limiar de **0,70** de similaridade (0,78 no Face ID) | Equivale à distância de cosseno 0,30 que o próprio DeepFace usa para Facenet512. A versão anterior usava 0,60 e aceitava falsos positivos. |
+| `face_samples.id` = id do ponto no Qdrant | Apagar uma foto remove exatamente o vetor dela. A contagem de fotos sai de um `COUNT`, então não fica dessincronizada. |
+| Schema aplicado no boot, de forma idempotente | `docker compose up` em banco vazio ou antigo chega ao mesmo estado, sem passo manual de migração. |
+| Modelos carregam em thread separada | A API sobe na hora. Login e cadastro funcionam enquanto os pesos baixam, e o painel mostra o status. |
+| Chamadas ao modelo serializadas por lock | Os modelos Keras não são seguros para uso concorrente entre threads de request. |
+
+## Rodando
+
+Pré-requisito: Docker. Recomenda-se reservar uns 6 GB de RAM para o Docker por causa do TensorFlow.
 
 ```bash
-# 1. Clone e entre no diretório
 git clone https://github.com/PeSzpak/face-recognition-pro.git
 cd face-recognition-pro
-
-# 2. Inicie os containers (primeira vez baixa modelos - 5-10 min)
-docker compose up -d --build
-
-# 3. Aguarde inicialização (~30 segundos após build)
-docker compose logs backend -f
-
-# 4. Acesse quando ver "Application startup complete"
-```
-
-### 🌐 URLs de Acesso
-
-- **Frontend**: http://localhost:5173
-- **API Docs**: http://localhost:8000/docs
-- **Qdrant Dashboard**: http://localhost:6333/dashboard
-
-### 🔐 Credenciais Padrão
-
-```
-Email: admin@facerecognition.pro
-Senha: admin123
-```
-
-## 🎯 Funcionalidades
-
-### ✅ Totalmente Funcionais
-- **Autenticação JWT** - Login seguro com tokens
-- **Reconhecimento Facial** - DeepFace + Facenet512 (512D vectors)
-- **Upload/Webcam** - Múltiplas formas de captura
-- **CRUD de Pessoas** - Criar, listar, editar, deletar
-- **Múltiplas Fotos** - Melhor precisão com várias imagens
-- **Dashboard Real-Time** - Estatísticas do banco de dados
-- **Logs Auditáveis** - Todos reconhecimentos salvos
-- **Vector Search** - Busca rápida com Qdrant
-- **100% Local** - Zero dependências externas
-
-### 🚫 Removido
-- ❌ Todos os mocks e simulações
-- ❌ Dados fake
-- ❌ Fallbacks de desenvolvimento
-
-## 🏗️ Arquitetura
-
-```
-┌─────────────┐      ┌──────────────┐      ┌──────────────┐
-│   Frontend  │─────▶│   Backend    │─────▶│  PostgreSQL  │
-│   React     │      │   FastAPI    │      │   Database   │
-│   :5173     │      │   :8000      │      │   :5432      │
-└─────────────┘      └──────┬───────┘      └──────────────┘
-                            │
-                            ▼
-                     ┌──────────────┐
-                     │    Qdrant    │
-                     │ Vector Store │
-                     │    :6333     │
-                     └──────────────┘
-```
-
-## 📋 Pré-requisitos
-
-- Docker Desktop instalado
-- 8GB RAM disponível
-- 5GB espaço em disco
-
-## 🛠️ Tecnologias
-
-### Backend
-- **FastAPI** 0.104.1 - Framework web moderno
-- **PostgreSQL** 15 - Banco relacional
-- **Qdrant** 1.15.5 - Vector database
-- **DeepFace** 0.0.92 - Reconhecimento facial
-- **TensorFlow** 2.15.0 - Machine learning
-- **OpenCV** - Detector de rostos
-
-### Frontend
-- **React** 18 - UI library
-- **TypeScript** 5 - Type safety
-- **Vite** 5 - Build tool
-- **TailwindCSS** 3 - Styling
-
-## 📂 Estrutura do Projeto
-
-```
-face-recognition-pro/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # Endpoints REST
-│   │   ├── core/         # Database, security
-│   │   ├── models/       # SQLAlchemy models
-│   │   ├── schemas/      # Pydantic schemas
-│   │   ├── services/     # Lógica de negócio
-│   │   └── utils/        # Helpers
-│   ├── models/           # Modelos DeepFace (auto-download)
-│   ├── uploads/          # Fotos temporárias
-│   ├── requirements.txt  # Dependências Python
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # Componentes React
-│   │   ├── contexts/     # Context API
-│   │   ├── services/     # API clients
-│   │   ├── styles/       # CSS
-│   │   └── types/        # TypeScript types
-│   ├── package.json
-│   └── Dockerfile
-├── database/
-│   └── init.sql          # Schema inicial
-├── docker-compose.yml
-└── README.md
-```
-
-## 🔧 Comandos Úteis
-
-### Gerenciar Containers
-
-```bash
-# Iniciar
-docker compose up -d
-
-# Parar
-docker compose down
-
-# Reiniciar apenas backend
-docker compose restart backend
-
-# Ver logs
-docker compose logs -f backend
-
-# Reconstruir tudo
-docker compose up -d --build --force-recreate
-```
-
-### Verificar Status
-
-```bash
-# Status dos containers
-docker compose ps
-
-# Ver banco de dados
-docker exec face-recognition-db psql -U admin -d face_recognition -c "SELECT * FROM persons;"
-
-# Ver logs de reconhecimento
-docker exec face-recognition-db psql -U admin -d face_recognition -c "SELECT * FROM recognition_logs ORDER BY created_at DESC LIMIT 10;"
-
-# Ver embeddings no Qdrant
-curl http://localhost:6333/collections/face_embeddings | python3 -m json.tool
-```
-
-## 📖 Como Usar
-
-### 1. Primeiro Acesso
-
-1. Abra http://localhost:5173
-2. Faça login com credenciais padrão
-3. Será redirecionado ao Dashboard
-
-### 2. Cadastrar Pessoa
-
-1. Menu lateral: "Pessoas"
-2. Botão: "+ Nova Pessoa"
-3. Preencha nome e descrição
-4. Upload de fotos (recomendado: 3-5 fotos diferentes ângulos)
-5. Salvar
-
-**Importante**: Quanto mais fotos, melhor a precisão!
-
-### 3. Reconhecer Rosto
-
-1. Menu lateral: "Reconhecimento"
-2. Escolha método:
-   - **Upload**: Envie arquivo de imagem
-   - **Webcam**: Capture ao vivo
-3. Sistema processa e retorna resultado
-
-### 4. Ver Resultados
-
-- **Dashboard**: Estatísticas gerais
-- **Pessoas**: Lista de cadastrados
-- **Reconhecimento**: Histórico de logs
-
-## 🐛 Troubleshooting
-
-### Backend não inicia
-
-```bash
-# Verificar logs
-docker compose logs backend
-
-# Reconstruir imagem
-docker compose up -d --build backend
-```
-
-### Erro "No face detected"
-
-- Certifique-se que a foto tem um rosto visível
-- Foto deve estar bem iluminada
-- Rosto deve estar frontal
-
-### Baixa precisão
-
-- Adicione mais fotos da pessoa (diferentes ângulos)
-- Use fotos com boa qualidade
-- Iluminação adequada
-
-### Containers não sobem
-
-```bash
-# Limpar tudo e recomeçar
-docker compose down -v
 docker compose up -d --build
 ```
 
-## 🔒 Segurança
+Acesse **http://localhost:8080** e entre com `admin` / `admin123`. No primeiro boot, os pesos dos modelos (~210 MB) são baixados para um volume. O indicador no canto inferior da barra lateral fica verde quando terminam.
 
-- Senhas hasheadas com bcrypt
-- JWT tokens para autenticação
-- CORS configurado
-- SQL injection protegido (queries parametrizadas)
-- Validação de inputs com Pydantic
+| Serviço | URL |
+| --- | --- |
+| Aplicação | http://localhost:8080 |
+| API (Swagger) | http://localhost:8000/docs |
+| Qdrant | http://localhost:6333/dashboard |
 
-## 📊 Performance
+### Desenvolvimento local
 
-- **Reconhecimento**: ~1-2s por imagem
-- **Threshold**: 0.6 (60% similaridade)
-- **Dimensões**: 512D vectors (Facenet512)
-- **Detector**: OpenCV (mais rápido)
+```bash
+docker compose up -d postgres qdrant
 
-## 🤝 Contribuição
+cd backend
+python3.10 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+uvicorn app.main:app --reload
 
-1. Fork o projeto
-2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. Push para branch (`git push origin feature/nova-funcionalidade`)
-5. Abra um Pull Request
+cd ../frontend
+npm install
+npm run dev          # http://localhost:5173, com proxy de /api para :8000
+```
 
-## 📝 Licença
+### Testes
 
-MIT License - veja [LICENSE](LICENSE) para detalhes.
+```bash
+cd backend && pytest
+```
 
-## 👨‍💻 Autor
+Os testes unitários cobrem o ranqueamento e o tratamento de imagem. Os de integração exercitam a API contra PostgreSQL e Qdrant reais, com um modelo facial falso e determinístico: cadastro, rejeição de rosto duplicado, identificação, exclusão, login por Face ID e estatísticas. Eles usam um banco `face_recognition_test` separado e são pulados se o Postgres não estiver acessível.
 
-**Pedro Szpak**
-- GitHub: [@PeSzpak](https://github.com/PeSzpak)
+## Configuração
 
-## 🙏 Agradecimentos
+Variáveis do backend (veja `backend/.env.example`):
 
-- [DeepFace](https://github.com/serengil/deepface) - Framework de reconhecimento facial
-- [Qdrant](https://qdrant.tech/) - Vector database
-- [FastAPI](https://fastapi.tiangolo.com/) - Framework web Python
+| Variável | Padrão | Descrição |
+| --- | --- | --- |
+| `FACE_DETECTOR` | `retinaface` | Detector do DeepFace. `opencv` é mais rápido e menos preciso. |
+| `MATCH_THRESHOLD` | `0.70` | Similaridade mínima para identificar alguém. |
+| `FACE_LOGIN_THRESHOLD` | `0.78` | Similaridade mínima para o login por Face ID. |
+| `MIN_SAMPLE_QUALITY` | `0.35` | Qualidade mínima de uma foto de cadastro (nitidez, exposição, tamanho). |
+| `SECRET_KEY` | valor de demo | Chave de assinatura dos JWT. **Troque em qualquer ambiente real.** |
+| `ADMIN_PASSWORD` | `admin123` | Senha do admin criado no primeiro boot. Não sobrescreve uma senha já existente. |
+
+## Estrutura
+
+```
+backend/app/
+  face/engine.py      DeepFace: detecção + embedding, warmup, lock
+  face/matching.py    ranqueamento puro, sem I/O
+  face/pipeline.py    cadastro e identificação
+  api/                rotas: auth, persons, recognition, stats
+  schema.sql          schema idempotente
+frontend/src/
+  pages/              uma tela por rota
+  features/           modais de cadastro de pessoa e de fotos
+  components/         Camera, FaceOverlay, AppShell e o kit de UI
+  lib/                cliente da API, sessão, tipos
+```
+
+## Limitações conhecidas
+
+- **Sem prova de vida.** Uma foto impressa ou exibida numa tela pode passar no Face ID. O DeepFace oferece anti-spoofing (FasNet), mas ele exige PyTorch, o que dobraria o tamanho da imagem. É o próximo passo natural.
+- **CPU.** Cerca de 1 s por imagem em um Mac M-series. Com GPU, ou trocando o detector para `opencv`, a latência cai bastante.
+- **Dados biométricos.** Rostos são dados pessoais sensíveis pela LGPD. Em produção, colete consentimento explícito, defina retenção e restrinja o acesso.
+
+## Licença
+
+MIT. Veja [LICENSE](LICENSE).
