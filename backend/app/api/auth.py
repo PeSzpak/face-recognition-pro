@@ -1,163 +1,81 @@
-from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from app.core.security import (
-    verify_password, get_password_hash, create_access_token,
-    get_current_user
-)
-from app.core.database import get_database
-from app.models.user import UserCreate, User, Token
-from app.core.exceptions import AuthenticationException
-import logging
+from fastapi import APIRouter, File, UploadFile
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
+from app import db
+from app.errors import AppError, unauthorized
+from app.face import pipeline
+from app.security import CurrentUser, hash_password, issue_token, load_user, verify_password
+from app.schemas import LoginRequest, PasswordChange, SampleUploadResult, Session, UserOut
+from app.uploads import read_uploads
+
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=User)
-async def register(user_data: UserCreate, db=Depends(get_database)):
-    """Register a new user."""
-    try:
-        # Check if user already exists
-        existing_user = db.execute_query(
-            "SELECT * FROM users WHERE email = %s",
-            (user_data.email,)
+@router.post("/login", response_model=Session)
+def login(body: LoginRequest) -> Session:
+    row = db.fetch_one(
+        "SELECT id, hashed_password FROM users WHERE (username = %s OR email = %s) AND is_active",
+        (body.username, body.username),
+    )
+    if row is None or not verify_password(body.password, row["hashed_password"]):
+        raise unauthorized("Usuário ou senha incorretos")
+    return Session(access_token=issue_token(row["id"], "pwd"), user=load_user(row["id"]))
+
+
+@router.post("/face-login", response_model=Session)
+def face_login(image: UploadFile = File(...)) -> Session:
+    data = read_uploads([image])[0].data
+    found, faces_count, elapsed_ms = pipeline.match_single_face(data)
+
+    if found is None:
+        pipeline.record_event("face_login", "no_face", elapsed_ms, 0)
+        raise AppError(422, "no_face", "Nenhum rosto detectado. Centralize o rosto e tente de novo.")
+    if found.match is None:
+        top = found.ranked[0].similarity if found.ranked else None
+        pipeline.record_event("face_login", "unknown", elapsed_ms, faces_count, confidence=top)
+        raise unauthorized("Rosto não reconhecido")
+
+    person_id, similarity = found.match.person_id, found.match.similarity
+    row = db.fetch_one("SELECT id FROM users WHERE person_id = %s AND is_active", (person_id,))
+    if row is None:
+        pipeline.record_event("face_login", "denied", elapsed_ms, faces_count, person_id, similarity)
+        raise AppError(403, "face_id_not_linked", "Rosto reconhecido, mas sem Face ID vinculado a um usuário")
+
+    pipeline.record_event("face_login", "identified", elapsed_ms, faces_count, person_id, similarity)
+    return Session(access_token=issue_token(row["id"], "face"), user=load_user(row["id"]), confidence=similarity)
+
+
+@router.get("/me", response_model=UserOut)
+def me(user: CurrentUser) -> UserOut:
+    return user
+
+
+@router.post("/password", status_code=204)
+def change_password(body: PasswordChange, user: CurrentUser) -> None:
+    row = db.fetch_one("SELECT hashed_password FROM users WHERE id = %s", (user.id,))
+    if not verify_password(body.current_password, row["hashed_password"]):
+        raise AppError(400, "wrong_password", "Senha atual incorreta")
+    db.execute("UPDATE users SET hashed_password = %s WHERE id = %s", (hash_password(body.new_password), user.id))
+
+
+@router.post("/face-id", response_model=SampleUploadResult)
+def enroll_face_id(user: CurrentUser, images: list[UploadFile] = File(...)) -> SampleUploadResult:
+    """Enroll the signed-in user's face. Creates their person record on first use."""
+    person_id = user.person_id
+    if person_id is None:
+        person = db.fetch_one(
+            "INSERT INTO persons (name, email) VALUES (%s, %s) RETURNING id",
+            (user.full_name or user.username, user.email),
         )
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-        
-        existing_username = db.execute_query(
-            "SELECT * FROM users WHERE username = %s",
-            (user_data.username,)
-        )
-        if existing_username:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
-            )
-        
-        # Hash password
-        hashed_password = get_password_hash(user_data.password)
-        
-        # Create user
-        result = db.execute_query(
-            """
-            INSERT INTO users (email, username, full_name, hashed_password, is_active)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, email, username, full_name, is_active, created_at, updated_at
-            """,
-            (user_data.email, user_data.username, user_data.full_name, hashed_password, True)
-        )
-        
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create user"
-            )
-        
-        created_user = result[0]
-        user_response = User(**created_user)
-        
-        logger.info(f"User registered successfully: {user_data.email}")
-        return user_response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Registration failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed"
-        )
+        person_id = person["id"]
+    result = pipeline.enroll(person_id, read_uploads(images))
+    if result.added and user.person_id is None:
+        db.execute("UPDATE users SET person_id = %s WHERE id = %s", (person_id, user.id))
+    elif not result.added and user.person_id is None:
+        db.execute("DELETE FROM persons WHERE id = %s", (person_id,))
+    return result
 
 
-@router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get_database)):
-    """Login user and return access token."""
-    try:
-        # Find user by username or email
-        user_result = db.execute_query(
-            "SELECT * FROM users WHERE username = %s OR email = %s",
-            (form_data.username, form_data.username)
-        )
-        
-        if not user_result:
-            raise AuthenticationException("Invalid username/email or password")
-        
-        user = user_result[0]
-        
-        # Verify password
-        if not verify_password(form_data.password, user["hashed_password"]):
-            raise AuthenticationException("Invalid username/email or password")
-        
-        # Check if user is active
-        if not user.get("is_active", True):
-            raise AuthenticationException("Account is disabled")
-        
-        # Create access token
-        access_token_expires = timedelta(minutes=30)
-        access_token = create_access_token(
-            data={"sub": str(user["id"]), "username": user["username"]},
-            expires_delta=access_token_expires
-        )
-        
-        logger.info(f"User logged in successfully: {user['email']}")
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer"
-        }
-        
-    except AuthenticationException:
-        raise
-    except Exception as e:
-        logger.error(f"Login failed: {e}")
-        raise AuthenticationException("Login failed")
+@router.delete("/face-id", status_code=204)
+def unlink_face_id(user: CurrentUser) -> None:
+    db.execute("UPDATE users SET person_id = NULL WHERE id = %s", (user.id,))
 
-
-@router.get("/me", response_model=User)
-async def get_current_user_info(current_user=Depends(get_current_user), db=Depends(get_database)):
-    """Get current user information."""
-    try:
-        user_id = current_user["sub"]
-        
-        user_result = db.execute_query(
-            "SELECT id, email, username, full_name, is_active, created_at, updated_at FROM users WHERE id = %s",
-            (user_id,)
-        )
-        
-        if not user_result:
-            raise AuthenticationException("User not found")
-        
-        user = User(**user_result[0])
-        return user
-        
-    except AuthenticationException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get user info: {e}")
-        raise AuthenticationException("Failed to get user information")
-
-
-@router.post("/refresh", response_model=Token)
-async def refresh_token(current_user=Depends(get_current_user)):
-    """Refresh access token."""
-    try:
-        # Create new access token
-        access_token_expires = timedelta(minutes=30)
-        access_token = create_access_token(
-            data={"sub": current_user["sub"], "username": current_user["username"]},
-            expires_delta=access_token_expires
-        )
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer"
-        }
-        
-    except Exception as e:
-        logger.error(f"Token refresh failed: {e}")
-        raise AuthenticationException("Token refresh failed")
