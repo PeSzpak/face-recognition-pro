@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/login", response_model=Session)
 def login(body: LoginRequest) -> Session:
     row = db.fetch_one(
-        "SELECT id, hashed_password FROM users WHERE (username = %s OR email = %s) AND is_active",
+        "SELECT id, hashed_password FROM users WHERE (username = %s OR email = %s) AND is_active AND password_login",
         (body.username, body.username),
     )
     if row is None or not verify_password(body.password, row["hashed_password"]):
@@ -35,10 +35,19 @@ def face_login(image: UploadFile = File(...)) -> Session:
         raise unauthorized("Rosto não reconhecido")
 
     person_id, similarity = found.match.person_id, found.match.similarity
-    row = db.fetch_one("SELECT id FROM users WHERE person_id = %s AND is_active", (person_id,))
-    if row is None:
+    row = db.fetch_one(
+        """
+        SELECT u.id, p.active AS person_active
+        FROM users u JOIN persons p ON p.id = u.person_id
+        WHERE u.person_id = %s AND u.is_active
+        """,
+        (person_id,),
+    )
+    if row is None or not row["person_active"]:
         pipeline.record_event("face_login", "denied", elapsed_ms, faces_count, person_id, similarity)
-        raise AppError(403, "face_id_not_linked", "Rosto reconhecido, mas sem Face ID vinculado a um usuário")
+        if row is None:
+            raise AppError(403, "face_id_not_linked", "Rosto reconhecido, mas esta pessoa não tem acesso por Face ID")
+        raise AppError(403, "person_inactive", "Rosto reconhecido, mas o cadastro desta pessoa está inativo")
 
     pipeline.record_event("face_login", "identified", elapsed_ms, faces_count, person_id, similarity)
     return Session(access_token=issue_token(row["id"], "face"), user=load_user(row["id"]), confidence=similarity)
@@ -51,6 +60,8 @@ def me(user: CurrentUser) -> UserOut:
 
 @router.post("/password", status_code=204)
 def change_password(body: PasswordChange, user: CurrentUser) -> None:
+    if not user.password_login:
+        raise AppError(400, "face_only_account", "Esta conta entra apenas por Face ID")
     row = db.fetch_one("SELECT hashed_password FROM users WHERE id = %s", (user.id,))
     if not verify_password(body.current_password, row["hashed_password"]):
         raise AppError(400, "wrong_password", "Senha atual incorreta")
@@ -77,5 +88,7 @@ def enroll_face_id(user: CurrentUser, images: list[UploadFile] = File(...)) -> S
 
 @router.delete("/face-id", status_code=204)
 def unlink_face_id(user: CurrentUser) -> None:
+    if not user.password_login:
+        raise AppError(400, "face_only_account", "Esta conta entra apenas por Face ID e não pode desativá-lo")
     db.execute("UPDATE users SET person_id = NULL WHERE id = %s", (user.id,))
 

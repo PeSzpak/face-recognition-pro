@@ -19,10 +19,11 @@ class Page(BaseModel, Generic[T]):
 
 class UserOut(BaseModel):
     id: UUID
-    email: str
+    email: str | None
     username: str
     full_name: str | None
     person_id: UUID | None
+    password_login: bool
     created_at: datetime
 
 
@@ -81,6 +82,7 @@ class PersonOut(BaseModel):
     external_id: str | None
     notes: str | None
     active: bool
+    face_access: bool
     sample_count: int
     cover_sample_id: UUID | None
     last_seen_at: datetime | None

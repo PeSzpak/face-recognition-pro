@@ -1,3 +1,6 @@
+import re
+import secrets
+import unicodedata
 from typing import Literal
 from uuid import UUID
 
@@ -5,10 +8,10 @@ from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from app import db
-from app.errors import not_found
+from app.errors import AppError, not_found
 from app.face import pipeline
 from app.schemas import Page, PersonCreate, PersonOut, PersonUpdate, SampleOut, SampleUploadResult
-from app.security import CurrentUser
+from app.security import CurrentUser, hash_password
 from app.uploads import read_uploads
 from app.vector_store import vector_store
 
@@ -18,6 +21,7 @@ PERSON_SELECT = f"""
     SELECT p.*,
            (SELECT count(*) FROM face_samples s WHERE s.person_id = p.id)::int AS sample_count,
            {pipeline.COVER_SAMPLE} AS cover_sample_id,
+           EXISTS (SELECT 1 FROM users u WHERE u.person_id = p.id AND u.is_active) AS face_access,
            (SELECT max(e.created_at) FROM recognition_events e
              WHERE e.person_id = p.id AND e.status = 'identified') AS last_seen_at
     FROM persons p
@@ -88,6 +92,7 @@ def update_person(person_id: UUID, body: PersonUpdate, _: CurrentUser) -> Person
 @router.delete("/{person_id}", status_code=204)
 def delete_person(person_id: UUID, _: CurrentUser) -> None:
     samples = db.fetch_all("SELECT id FROM face_samples WHERE person_id = %s", (person_id,))
+    db.execute("DELETE FROM users WHERE person_id = %s AND NOT password_login", (person_id,))
     if not db.execute("DELETE FROM persons WHERE id = %s", (person_id,)):
         raise not_found("Pessoa")
     vector_store.delete_person(person_id)
@@ -126,3 +131,43 @@ def sample_image(person_id: UUID, sample_id: UUID, _: CurrentUser) -> FileRespon
     if owned is None or not path.exists():
         raise not_found("Foto")
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+def _username(name: str, person_id: UUID) -> str:
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", ".", ascii_name.lower()).strip(".")[:40] or "pessoa"
+    return f"{slug}.{str(person_id)[:6]}"
+
+
+@router.put("/{person_id}/face-access", response_model=PersonOut)
+def grant_face_access(person_id: UUID, _: CurrentUser) -> PersonOut:
+    """Let this person unlock the app with their face. Creates a face-only account on first grant."""
+    person = get_person(person_id)
+    if person.face_access:
+        return person
+    if person.sample_count == 0:
+        raise AppError(422, "no_samples", "Adicione ao menos uma foto antes de liberar o Face ID")
+    email_taken = person.email and db.fetch_one("SELECT 1 FROM users WHERE lower(email) = lower(%s)", (person.email,))
+    db.execute(
+        """
+        INSERT INTO users (email, username, full_name, hashed_password, password_login, person_id)
+        VALUES (%s, %s, %s, %s, false, %s)
+        """,
+        (
+            None if email_taken else person.email,
+            _username(person.name, person_id),
+            person.name,
+            hash_password(secrets.token_urlsafe(32)),
+            person_id,
+        ),
+    )
+    return get_person(person_id)
+
+
+@router.delete("/{person_id}/face-access", response_model=PersonOut)
+def revoke_face_access(person_id: UUID, _: CurrentUser) -> PersonOut:
+    """Face-only accounts are deleted, which ends their sessions. Password accounts just lose the link."""
+    get_person(person_id)
+    db.execute("DELETE FROM users WHERE person_id = %s AND NOT password_login", (person_id,))
+    db.execute("UPDATE users SET person_id = NULL WHERE person_id = %s", (person_id,))
+    return get_person(person_id)

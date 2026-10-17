@@ -17,7 +17,7 @@ ALGORITHM = "HS256"
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _bearer = HTTPBearer(auto_error=False)
 
-USER_COLUMNS = "id, email, username, full_name, person_id, created_at"
+USER_COLUMNS = "id, email, username, full_name, person_id, password_login, created_at"
 
 
 def hash_password(password: str) -> str:

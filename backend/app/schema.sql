@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS person_id UUID UNIQUE REFERENCES persons(id) ON DELETE SET NULL;
+-- Face-only accounts are created for enrolled people and cannot sign in with a password.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_login BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS face_samples (
     id UUID PRIMARY KEY,

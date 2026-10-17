@@ -160,3 +160,70 @@ def test_search_filters_people(client):
     names = [p["name"] for p in client.get("/api/persons", params={"search": "ana"}).json()["items"]]
 
     assert names == ["Ana Souza"]
+
+
+def test_granting_face_access_lets_a_person_unlock_the_app(client):
+    person = create_person(client, "Beatriz Nunes")
+    client.post(f"/api/persons/{person}/samples", files={"images": face(60)})
+
+    granted = client.put(f"/api/persons/{person}/face-access").json()
+    assert granted["face_access"] is True
+    assert client.put(f"/api/persons/{person}/face-access").status_code == 200
+
+    session = client.post("/api/auth/face-login", files={"image": face(60)})
+    assert session.status_code == 200
+    user = session.json()["user"]
+    assert user["full_name"] == "Beatriz Nunes"
+    assert user["password_login"] is False
+
+    as_beatriz = {"Authorization": f"Bearer {session.json()['access_token']}"}
+    assert client.get("/api/auth/me", headers=as_beatriz).status_code == 200
+    assert client.delete("/api/auth/face-id", headers=as_beatriz).status_code == 400
+    assert client.post("/api/auth/login", json={"username": user["username"], "password": "x"}).status_code == 401
+
+
+def test_face_access_requires_photos(client):
+    person = create_person(client, "Sem Foto")
+
+    response = client.put(f"/api/persons/{person}/face-access")
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "no_samples"
+
+
+def test_revoking_face_access_ends_sessions_and_blocks_login(client):
+    person = create_person(client, "Diego Prado")
+    client.post(f"/api/persons/{person}/samples", files={"images": face(70)})
+    client.put(f"/api/persons/{person}/face-access")
+    token = client.post("/api/auth/face-login", files={"image": face(70)}).json()["access_token"]
+
+    revoked = client.delete(f"/api/persons/{person}/face-access").json()
+
+    assert revoked["face_access"] is False
+    assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    assert client.post("/api/auth/face-login", files={"image": face(70)}).status_code == 403
+
+
+def test_inactive_person_cannot_unlock(client):
+    person = create_person(client, "Elisa Torres")
+    client.post(f"/api/persons/{person}/samples", files={"images": face(80)})
+    client.put(f"/api/persons/{person}/face-access")
+    client.patch(f"/api/persons/{person}", json={"active": False})
+
+    response = client.post("/api/auth/face-login", files={"image": face(80)})
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "person_inactive"
+
+
+def test_revoking_access_of_a_password_account_only_unlinks_it(client):
+    me = client.get("/api/auth/me").json()
+    if me["person_id"] is None:
+        client.post("/api/auth/face-id", files={"images": face(90)})
+        me = client.get("/api/auth/me").json()
+
+    client.delete(f"/api/persons/{me['person_id']}/face-access")
+
+    after = client.get("/api/auth/me")
+    assert after.status_code == 200
+    assert after.json()["person_id"] is None
