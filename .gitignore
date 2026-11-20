@@ -83,3 +83,5 @@ models/*.pkl
 models/*.joblib
 face_encodings/
 training_data/
+# README screenshots (the media/ rule above is for runtime uploads)
+!docs/media/
